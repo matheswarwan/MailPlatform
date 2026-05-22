@@ -1,5 +1,57 @@
+import {
+  ListIdentitiesCommand,
+  GetIdentityVerificationAttributesCommand,
+} from '@aws-sdk/client-ses';
+import { sesClient } from '../config/aws.js';
 import { query } from '../config/database.js';
 import { authenticate } from '../middleware/auth.js';
+
+/**
+ * Check if an email address is a verified SES sender identity.
+ * Passes if the exact email is verified OR if its domain is verified.
+ * Returns { ok: true } or { ok: false, verifiedIdentities: [...] }
+ */
+async function validateFromEmail(fromEmail) {
+  const domain = fromEmail.split('@')[1]?.toLowerCase();
+  const emailLower = fromEmail.toLowerCase();
+
+  const [emailRes, domainRes] = await Promise.all([
+    sesClient.send(new ListIdentitiesCommand({ IdentityType: 'EmailAddress' })),
+    sesClient.send(new ListIdentitiesCommand({ IdentityType: 'Domain' })),
+  ]);
+
+  const allIdentities = [
+    ...(emailRes.Identities || []),
+    ...(domainRes.Identities || []),
+  ];
+
+  if (allIdentities.length === 0) {
+    return { ok: false, verifiedIdentities: [] };
+  }
+
+  const verifyRes = await sesClient.send(
+    new GetIdentityVerificationAttributesCommand({ Identities: allIdentities })
+  );
+  const attrs = verifyRes.VerificationAttributes || {};
+
+  const verifiedEmails = (emailRes.Identities || [])
+    .filter((id) => attrs[id]?.VerificationStatus === 'Success')
+    .map((id) => id.toLowerCase());
+
+  const verifiedDomains = (domainRes.Identities || [])
+    .filter((id) => attrs[id]?.VerificationStatus === 'Success')
+    .map((id) => id.toLowerCase());
+
+  const ok =
+    verifiedEmails.includes(emailLower) ||
+    (domain && verifiedDomains.includes(domain));
+
+  return {
+    ok,
+    verifiedEmails,
+    verifiedDomains,
+  };
+}
 
 export default async function campaignRoutes(fastify) {
   // GET /api/campaigns — list campaigns with stats
@@ -90,22 +142,23 @@ export default async function campaignRoutes(fastify) {
   fastify.post('/api/campaigns', { preHandler: authenticate }, async (request, reply) => {
     const {
       name,
-      subjectLine,
+      subjectLine, subject,  // accept both
       previewText,
       fromName,
       fromEmail,
       replyTo,
       segmentId,
       templateId,
+      blocks,               // auto-create template from blocks if provided
     } = request.body || {};
     const accountId = request.user.accountId;
+    const resolvedSubject = subjectLine || subject || null;
 
     if (!name) {
       return reply.code(400).send({ error: 'Campaign name is required' });
     }
 
     try {
-      // Validate segment belongs to account if provided
       if (segmentId) {
         const seg = await query(
           'SELECT id FROM segments WHERE id = $1 AND account_id = $2',
@@ -116,23 +169,22 @@ export default async function campaignRoutes(fastify) {
         }
       }
 
-      // Validate template belongs to account if provided
-      if (templateId) {
-        const tmpl = await query(
-          'SELECT id FROM templates WHERE id = $1 AND account_id = $2',
-          [templateId, accountId]
-        );
-        if (tmpl.rows.length === 0) {
-          return reply.code(400).send({ error: 'Template not found' });
-        }
-      }
-
       // Fall back to account defaults for from_name / from_email
       const account = await query(
         'SELECT from_name, from_email FROM accounts WHERE id = $1',
         [accountId]
       );
       const acct = account.rows[0] || {};
+
+      // Auto-create a template from blocks if provided
+      let resolvedTemplateId = templateId || null;
+      if (blocks && Array.isArray(blocks) && blocks.length > 0) {
+        const tmplResult = await query(
+          `INSERT INTO templates (account_id, name, blocks) VALUES ($1, $2, $3) RETURNING id`,
+          [accountId, `${name} — Template`, JSON.stringify(blocks)]
+        );
+        resolvedTemplateId = tmplResult.rows[0].id;
+      }
 
       const result = await query(
         `INSERT INTO campaigns
@@ -143,13 +195,13 @@ export default async function campaignRoutes(fastify) {
         [
           accountId,
           name,
-          subjectLine || null,
+          resolvedSubject,
           previewText || null,
           fromName || acct.from_name || null,
           fromEmail || acct.from_email || null,
           replyTo || null,
           segmentId || null,
-          templateId || null,
+          resolvedTemplateId,
         ]
       );
 
@@ -191,14 +243,16 @@ export default async function campaignRoutes(fastify) {
     const { id } = request.params;
     const {
       name,
-      subjectLine,
+      subjectLine, subject,  // accept both
       previewText,
       fromName,
       fromEmail,
       replyTo,
       segmentId,
       templateId,
+      blocks,
     } = request.body || {};
+    const resolvedSubject = subjectLine || subject || undefined;
     const accountId = request.user.accountId;
 
     try {
@@ -213,6 +267,30 @@ export default async function campaignRoutes(fastify) {
 
       if (existing.rows[0].status === 'sent') {
         return reply.code(400).send({ error: 'Cannot edit a sent campaign' });
+      }
+
+      // Auto-create/update template from blocks if provided
+      let resolvedTemplateId = templateId || undefined;
+      if (blocks && Array.isArray(blocks) && blocks.length > 0) {
+        const existingCampaign = await query(
+          'SELECT template_id FROM campaigns WHERE id = $1',
+          [id]
+        );
+        const existingTemplateId = existingCampaign.rows[0]?.template_id;
+
+        if (existingTemplateId) {
+          await query(
+            'UPDATE templates SET blocks = $1, updated_at = NOW() WHERE id = $2 AND account_id = $3',
+            [JSON.stringify(blocks), existingTemplateId, accountId]
+          );
+          resolvedTemplateId = existingTemplateId;
+        } else {
+          const tmplResult = await query(
+            `INSERT INTO templates (account_id, name, blocks) VALUES ($1, $2, $3) RETURNING id`,
+            [accountId, `${name || 'Campaign'} — Template`, JSON.stringify(blocks)]
+          );
+          resolvedTemplateId = tmplResult.rows[0].id;
+        }
       }
 
       const result = await query(
@@ -230,13 +308,13 @@ export default async function campaignRoutes(fastify) {
          RETURNING *`,
         [
           name,
-          subjectLine,
+          resolvedSubject,
           previewText,
           fromName,
           fromEmail,
           replyTo,
           segmentId,
-          templateId,
+          resolvedTemplateId,
           id,
           accountId,
         ]
@@ -314,10 +392,46 @@ export default async function campaignRoutes(fastify) {
         return reply.code(400).send({ error: 'Campaign must have a template before sending' });
       }
 
+      // Validate from_email is a verified SES identity
+      fastify.log.info(
+        { campaignId: id, fromEmail: campaign.from_email },
+        '[campaigns] Validating from_email against SES verified identities'
+      );
+      try {
+        const sesCheck = await validateFromEmail(campaign.from_email);
+        if (!sesCheck.ok) {
+          const hint = sesCheck.verifiedEmails.length > 0 || sesCheck.verifiedDomains.length > 0
+            ? ` Verified senders: ${[...sesCheck.verifiedEmails, ...sesCheck.verifiedDomains.map((d) => `*@${d}`)].join(', ')}`
+            : ' No verified identities found in SES. Verify an email or domain in the AWS SES console first.';
+          fastify.log.warn(
+            { campaignId: id, fromEmail: campaign.from_email, verifiedEmails: sesCheck.verifiedEmails, verifiedDomains: sesCheck.verifiedDomains },
+            '[campaigns] from_email is not a verified SES identity'
+          );
+          return reply.code(400).send({
+            error: `From email "${campaign.from_email}" is not a verified SES identity.${hint}`,
+          });
+        }
+        fastify.log.info(
+          { campaignId: id, fromEmail: campaign.from_email },
+          '[campaigns] from_email SES verification passed'
+        );
+      } catch (sesErr) {
+        // Non-fatal: if SES identity check fails (e.g. no AWS creds in dev), log and proceed
+        fastify.log.warn(
+          { err: sesErr, campaignId: id },
+          '[campaigns] Could not verify from_email against SES — skipping check'
+        );
+      }
+
       // Mark campaign as sending immediately (returns quickly, processing happens async)
       await query(
         'UPDATE campaigns SET status = $1, updated_at = NOW() WHERE id = $2',
         ['sending', id]
+      );
+
+      fastify.log.info(
+        { campaignId: id, accountId, fromEmail: campaign.from_email, segmentId: campaign.segment_id },
+        '[campaigns] Campaign send initiated'
       );
 
       // Import campaignEngine dynamically to avoid circular dependency issues at startup
@@ -325,8 +439,7 @@ export default async function campaignRoutes(fastify) {
 
       // Run async — do not await so the HTTP response returns quickly
       sendCampaign(id, accountId).catch((err) => {
-        fastify.log.error({ err, campaignId: id }, 'Campaign send failed');
-        // Reset status back to draft on failure
+        fastify.log.error({ err, campaignId: id }, '[campaigns] Campaign send failed — resetting to draft');
         query(
           'UPDATE campaigns SET status = $1, updated_at = NOW() WHERE id = $2',
           ['draft', id]
@@ -338,8 +451,8 @@ export default async function campaignRoutes(fastify) {
         campaignId: id,
       });
     } catch (err) {
-      fastify.log.error(err);
-      return reply.code(500).send({ error: 'Internal server error' });
+      fastify.log.error({ err, campaignId: id }, '[campaigns] Send route error');
+      return reply.code(500).send({ error: `Internal server error: ${err.message}` });
     }
   });
 

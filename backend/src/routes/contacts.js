@@ -310,6 +310,7 @@ export default async function contactRoutes(fastify) {
   // POST /api/contacts/import - CSV import
   fastify.post('/api/contacts/import', { preHandler: authenticate }, async (request, reply) => {
     const accountId = request.user.accountId;
+    const segmentId = request.query.segmentId || null;
 
     try {
       const data = await request.file();
@@ -377,19 +378,20 @@ export default async function contactRoutes(fastify) {
         }
 
         try {
+          // If importing into a segment, tag the contact with the segment ID
+          const segmentTag = segmentId ? `seg:${segmentId}` : null;
+          const finalTags = segmentTag ? [...new Set([...tags, segmentTag])] : tags;
+
           const result = await query(
-            `INSERT INTO contacts (account_id, email, first_name, last_name, company, phone, tags, source)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, 'import')
+            `INSERT INTO contacts (account_id, email, first_name, last_name, company, phone, tags, source, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, 'import', 'active')
              ON CONFLICT (account_id, email) DO UPDATE SET
                first_name = EXCLUDED.first_name,
                last_name = EXCLUDED.last_name,
                company = EXCLUDED.company,
                phone = EXCLUDED.phone,
-               tags = CASE
-                 WHEN array_length(EXCLUDED.tags, 1) > 0
-                 THEN array(SELECT DISTINCT unnest(contacts.tags || EXCLUDED.tags))
-                 ELSE contacts.tags
-               END,
+               status = 'active',
+               tags = array(SELECT DISTINCT unnest(contacts.tags || EXCLUDED.tags)),
                updated_at = NOW()
              RETURNING (xmax = 0) as is_insert`,
             [
@@ -399,7 +401,7 @@ export default async function contactRoutes(fastify) {
               lastName || null,
               company || null,
               phone || null,
-              tags,
+              finalTags,
             ]
           );
 
@@ -411,6 +413,31 @@ export default async function contactRoutes(fastify) {
         } catch (rowErr) {
           errors.push({ row: rowNum, email, error: rowErr.message });
           skipped++;
+        }
+      }
+
+      // Ensure the segment has a rule matching the segment tag so contacts appear in it
+      if (segmentId && (imported > 0 || updated > 0)) {
+        const segTag = `seg:${segmentId}`;
+        const segResult = await query(
+          'SELECT rules FROM segments WHERE id = $1 AND account_id = $2',
+          [segmentId, accountId]
+        );
+        if (segResult.rows.length > 0) {
+          const existingRules = segResult.rows[0].rules || [];
+          const alreadyHasRule = existingRules.some(
+            (r) => r.field === 'tag' && r.value === segTag
+          );
+          if (!alreadyHasRule) {
+            const updatedRules = [
+              ...existingRules,
+              { field: 'tag', operator: 'contains', value: segTag },
+            ];
+            await query(
+              'UPDATE segments SET rules = $1 WHERE id = $2 AND account_id = $3',
+              [JSON.stringify(updatedRules), segmentId, accountId]
+            );
+          }
         }
       }
 

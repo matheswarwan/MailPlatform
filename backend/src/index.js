@@ -12,6 +12,7 @@ import automationRoutes from './routes/automations.js';
 import analyticsRoutes from './routes/analytics.js';
 import preferenceRoutes from './routes/preferences.js';
 import webhookRoutes from './routes/webhooks.js';
+import sesRoutes from './routes/ses.js';
 
 const app = Fastify({
   logger: {
@@ -92,6 +93,7 @@ await app.register(automationRoutes);
 await app.register(analyticsRoutes);
 await app.register(preferenceRoutes);
 await app.register(webhookRoutes);
+await app.register(sesRoutes);
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/health', {

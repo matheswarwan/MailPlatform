@@ -21,7 +21,9 @@ const BATCH_DELAY_MS = 1000; // 1 second between batches
  * @param {string} accountId
  */
 export async function sendCampaign(campaignId, accountId) {
-  console.log(`[campaignEngine] Starting send for campaign ${campaignId}`);
+  const startTime = Date.now();
+  console.log(`[campaignEngine] ══════════════════════════════════════════`);
+  console.log(`[campaignEngine] Starting send  campaign=${campaignId}`);
 
   // ── 1. Load campaign ──────────────────────────────────────────────────────
   const campaignResult = await query(
@@ -59,6 +61,14 @@ export async function sendCampaign(campaignId, accountId) {
   const blocks = Array.isArray(campaign.template_blocks)
     ? campaign.template_blocks
     : JSON.parse(campaign.template_blocks || '[]');
+
+  console.log(`[campaignEngine] Campaign details:`);
+  console.log(`[campaignEngine]   name        = ${campaign.name}`);
+  console.log(`[campaignEngine]   subject     = ${campaign.subject_line}`);
+  console.log(`[campaignEngine]   from        = ${fromName} <${fromEmail}>`);
+  console.log(`[campaignEngine]   segment_id  = ${campaign.segment_id || '(all contacts)'}`);
+  console.log(`[campaignEngine]   template_id = ${campaign.template_id}`);
+  console.log(`[campaignEngine]   blocks      = ${blocks.length} blocks (${blocks.map((b) => b.type).join(', ')})`);
 
   // ── 2. Load segment contacts (excluding suppressed + unsubscribed) ─────────
   let contactsQuery;
@@ -107,7 +117,7 @@ export async function sendCampaign(campaignId, accountId) {
   const contactsResult = await query(contactsQuery, contactsParams);
   const contacts = contactsResult.rows;
 
-  console.log(`[campaignEngine] ${contacts.length} contacts to send to`);
+  console.log(`[campaignEngine] ${contacts.length} contacts to send to (after suppression filter)`);
 
   if (contacts.length === 0) {
     await query(
@@ -141,14 +151,18 @@ export async function sendCampaign(campaignId, accountId) {
   let sentCount = 0;
   let skippedCount = 0;
   let errorCount = 0;
+  const totalBatches = Math.ceil(contacts.length / BATCH_SIZE);
 
   for (let i = 0; i < contacts.length; i += BATCH_SIZE) {
     const batch = contacts.slice(i, i + BATCH_SIZE);
+    const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+    console.log(`[campaignEngine] Batch ${batchNum}/${totalBatches} — ${batch.length} recipients`);
 
     await Promise.all(
       batch.map(async (contact) => {
         const sendId = sendIds.get(contact.id);
         if (!sendId) {
+          console.log(`[campaignEngine]   SKIP  ${contact.email} (no send record — already sent?)`);
           skippedCount++;
           return;
         }
@@ -156,6 +170,7 @@ export async function sendCampaign(campaignId, accountId) {
         // Double-check suppression (race condition safety)
         const suppressed = await isSuppressed(accountId, contact.email);
         if (suppressed) {
+          console.log(`[campaignEngine]   SKIP  ${contact.email} (suppressed)`);
           await query(
             'UPDATE sends SET status = $1 WHERE id = $2',
             ['suppressed', sendId]
@@ -181,6 +196,8 @@ export async function sendCampaign(campaignId, accountId) {
           // Personalise subject line ({{first_name}} etc.)
           const subject = personaliseText(campaign.subject_line, contact);
 
+          console.log(`[campaignEngine]   SEND  ${contact.email}  subject="${subject}"`);
+
           // Dispatch via SES
           const sesMessageId = await sendEmail({
             to: contact.email,
@@ -199,11 +216,11 @@ export async function sendCampaign(campaignId, accountId) {
             [sesMessageId, sendId]
           );
 
+          console.log(`[campaignEngine]   OK    ${contact.email}  ses_id=${sesMessageId}`);
           sentCount++;
         } catch (err) {
           console.error(
-            `[campaignEngine] Failed to send to ${contact.email}:`,
-            err.message
+            `[campaignEngine]   ERROR ${contact.email}: ${err.message}`
           );
 
           await query(
@@ -215,6 +232,8 @@ export async function sendCampaign(campaignId, accountId) {
         }
       })
     );
+
+    console.log(`[campaignEngine] Batch ${batchNum} complete — running totals: sent=${sentCount} skipped=${skippedCount} errors=${errorCount}`);
 
     // Rate limiting: wait 1 second between batches (except after the last batch)
     if (i + BATCH_SIZE < contacts.length) {
@@ -229,10 +248,11 @@ export async function sendCampaign(campaignId, accountId) {
     [campaignId]
   );
 
-  console.log(
-    `[campaignEngine] Campaign ${campaignId} complete — ` +
-    `sent: ${sentCount}, skipped: ${skippedCount}, errors: ${errorCount}`
-  );
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  console.log(`[campaignEngine] ──────────────────────────────────────────`);
+  console.log(`[campaignEngine] COMPLETE  campaign=${campaignId}  elapsed=${elapsed}s`);
+  console.log(`[campaignEngine]   sent=${sentCount}  skipped=${skippedCount}  errors=${errorCount}  total=${contacts.length}`);
+  console.log(`[campaignEngine] ══════════════════════════════════════════`);
 
   return { sent: sentCount, skipped: skippedCount, errors: errorCount };
 }

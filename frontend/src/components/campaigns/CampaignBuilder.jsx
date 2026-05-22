@@ -306,7 +306,7 @@ function Input({ value, onChange, placeholder, type = 'text' }) {
 }
 
 // ─── Step 1: Setup ────────────────────────────────────────────────────────────
-function SetupStep({ form, setForm, segments }) {
+function SetupStep({ form, setForm, segments, verifiedEmails, verifiedDomains }) {
   return (
     <div className="grid grid-cols-2 gap-5">
       <div className="col-span-2">
@@ -328,7 +328,31 @@ function SetupStep({ form, setForm, segments }) {
         <Input value={form.fromName} onChange={(v) => setForm({ ...form, fromName: v })} placeholder="e.g. Acme Team" />
       </Field>
       <Field label="From Email" required>
-        <Input value={form.fromEmail} onChange={(v) => setForm({ ...form, fromEmail: v })} placeholder="e.g. hello@acme.com" type="email" />
+        {verifiedEmails.length > 0 ? (
+          <select
+            value={form.fromEmail}
+            onChange={(e) => setForm({ ...form, fromEmail: e.target.value })}
+            className="w-full px-4 py-2.5 rounded-lg text-sm outline-none transition-all"
+            style={{ background: '#0F1117', border: '1px solid #252B3B', color: form.fromEmail ? '#F1F3F9' : '#8B92A5' }}
+            onFocus={(e) => (e.target.style.borderColor = '#4F7FFF')}
+            onBlur={(e) => (e.target.style.borderColor = '#252B3B')}
+          >
+            <option value="">Select a verified sender…</option>
+            {verifiedEmails.map((email) => (
+              <option key={email} value={email}>{email}</option>
+            ))}
+            {verifiedDomains.map((domain) => (
+              <option key={`domain:${domain}`} value={`sender@${domain}`}>sender@{domain} (any address on {domain})</option>
+            ))}
+          </select>
+        ) : (
+          <>
+            <Input value={form.fromEmail} onChange={(v) => setForm({ ...form, fromEmail: v })} placeholder="e.g. hello@acme.com" type="email" />
+            <p className="mt-1 text-xs" style={{ color: '#EAB308' }}>
+              No verified SES identities found. Verify an email or domain in the AWS SES console before sending.
+            </p>
+          </>
+        )}
       </Field>
       <Field label="Reply-To Email">
         <Input value={form.replyTo} onChange={(v) => setForm({ ...form, replyTo: v })} placeholder="e.g. support@acme.com" type="email" />
@@ -649,6 +673,8 @@ export default function CampaignBuilder() {
   const [savedId, setSavedId] = useState(id || null);
   const [scheduledAt, setScheduledAt] = useState('');
   const [saveError, setSaveError] = useState('');
+  const [verifiedEmails, setVerifiedEmails] = useState([]);
+  const [verifiedDomains, setVerifiedDomains] = useState([]);
 
   const [form, setForm] = useState({
     name: '',
@@ -659,6 +685,14 @@ export default function CampaignBuilder() {
     replyTo: '',
     segmentId: '',
   });
+
+  useEffect(() => {
+    // Fetch verified SES identities for the From Email dropdown
+    client.get('/ses/identities').then((res) => {
+      setVerifiedEmails(res.data.emails || []);
+      setVerifiedDomains(res.data.domains || []);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetchSegments();
@@ -773,7 +807,7 @@ export default function CampaignBuilder() {
       </div>
 
       <div className="rounded-2xl p-6" style={{ background: '#181C27', border: '1px solid #252B3B' }}>
-        {step === 1 && <SetupStep form={form} setForm={setForm} segments={segments} />}
+        {step === 1 && <SetupStep form={form} setForm={setForm} segments={segments} verifiedEmails={verifiedEmails} verifiedDomains={verifiedDomains} />}
         {step === 2 && <DesignStep blocks={blocks} setBlocks={setBlocks} device={device} setDevice={setDevice} />}
         {step === 3 && (
           <ReviewStep
