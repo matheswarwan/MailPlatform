@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import useAppStore from '../store/appStore';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
@@ -68,6 +69,7 @@ const MOCK_CONTACTS = [
 const PAGE_SIZE = 10;
 
 export default function Contacts() {
+  const navigate = useNavigate();
   const { contacts: storeContacts, contactsLoading, fetchContacts, addContact, deleteContact, segments, fetchSegments } = useAppStore();
 
   useEffect(() => { fetchSegments(); }, []);
@@ -399,10 +401,15 @@ export default function Contacts() {
                                 <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#8B92A5' }}>Segments</p>
                                 <div className="flex flex-wrap gap-1.5">
                                   {contactSegments.length > 0 ? contactSegments.map((seg) => (
-                                    <span key={seg.id || seg._id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium" style={{ background: '#1E2436', border: `1px solid ${seg.color || '#4F7FFF'}`, color: seg.color || '#4F7FFF' }}>
+                                    <button
+                                      key={seg.id || seg._id}
+                                      onClick={(e) => { e.stopPropagation(); navigate(`/audience?segment=${seg.id || seg._id}`); }}
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium transition-opacity hover:opacity-70"
+                                      style={{ background: '#1E2436', border: `1px solid ${seg.color || '#4F7FFF'}`, color: seg.color || '#4F7FFF', cursor: 'pointer' }}
+                                    >
                                       <span className="w-1.5 h-1.5 rounded-full" style={{ background: seg.color || '#4F7FFF' }} />
                                       {seg.name}
-                                    </span>
+                                    </button>
                                   )) : (
                                     <span className="text-sm" style={{ color: '#8B92A5' }}>None</span>
                                   )}

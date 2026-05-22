@@ -1,7 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
+import { useSearchParams } from 'react-router-dom';
 import useAppStore from '../store/appStore';
 import Button from '../components/ui/Button';
+import client from '../api/client';
 
 const DEFAULT_SEGMENTS = [
   { _id: 'all', name: 'All Customers', color: '#4F7FFF', contactCount: null },
@@ -42,9 +44,15 @@ function guessMapping(header) {
 
 export default function Audience() {
   const { segments: storeSegments, fetchSegments, createSegment, importContacts } = useAppStore();
+  const [searchParams] = useSearchParams();
+  const [importSegmentId, setImportSegmentId] = useState('');
   const [newSegName, setNewSegName] = useState('');
   const [creatingSegment, setCreatingSegment] = useState(false);
   const [showSegmentInput, setShowSegmentInput] = useState(false);
+
+  const [selectedSegment, setSelectedSegment] = useState(null);
+  const [segmentContacts, setSegmentContacts] = useState([]);
+  const [segmentContactsLoading, setSegmentContactsLoading] = useState(false);
 
   const [file, setFile] = useState(null);
   const [parsedData, setParsedData] = useState(null);
@@ -56,6 +64,32 @@ export default function Audience() {
   useEffect(() => {
     fetchSegments();
   }, []);
+
+  // Auto-select segment from ?segment=<id> query param (e.g. navigated from Contacts page)
+  const preselectedSegmentId = searchParams.get('segment');
+  useEffect(() => {
+    if (!preselectedSegmentId || storeSegments.length === 0) return;
+    const seg = storeSegments.find((s) => s.id === preselectedSegmentId);
+    if (seg) handleSegmentClick(seg);
+  }, [preselectedSegmentId, storeSegments.length]);
+
+  const handleSegmentClick = async (seg) => {
+    if (selectedSegment?.id === seg.id) {
+      setSelectedSegment(null);
+      setSegmentContacts([]);
+      return;
+    }
+    setSelectedSegment(seg);
+    setSegmentContactsLoading(true);
+    try {
+      const res = await client.get(`/segments/${seg.id}/contacts`);
+      setSegmentContacts(res.data.contacts || []);
+    } catch {
+      setSegmentContacts([]);
+    } finally {
+      setSegmentContactsLoading(false);
+    }
+  };
 
   const segments = storeSegments.length > 0 ? storeSegments : DEFAULT_SEGMENTS;
 
@@ -104,8 +138,8 @@ export default function Audience() {
     setImporting(true);
     setImportError('');
     try {
-      const result = await importContacts(file);
-      setImportResult(result);
+      const result = await importContacts(file, importSegmentId || null);
+      setImportResult(result.summary ?? result);
       setFile(null);
       setParsedData(null);
       setMapping({});
@@ -165,36 +199,92 @@ export default function Audience() {
         )}
 
         <div className="space-y-2">
-          {segments.map((seg) => (
-            <div
-              key={seg._id}
-              className="flex items-center gap-3 px-4 py-3 rounded-xl transition-colors cursor-pointer"
-              style={{ background: '#181C27', border: '1px solid #252B3B' }}
-              onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#4F7FFF')}
-              onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#252B3B')}
-            >
+          {segments.map((seg) => {
+            const isSelected = selectedSegment?.id === seg.id;
+            return (
               <div
-                className="w-3 h-3 rounded-full flex-shrink-0"
-                style={{ background: seg.color || '#4F7FFF' }}
-              />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate" style={{ color: '#F1F3F9' }}>{seg.name}</p>
-                {seg.contactCount !== null && (
-                  <p className="text-xs mt-0.5" style={{ color: '#8B92A5' }}>
-                    {seg.contactCount?.toLocaleString() ?? '—'} contacts
-                  </p>
-                )}
+                key={seg.id || seg._id}
+                className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer"
+                style={{
+                  background: isSelected ? '#1A2744' : '#181C27',
+                  border: `1px solid ${isSelected ? '#4F7FFF' : '#252B3B'}`,
+                }}
+                onClick={() => handleSegmentClick(seg)}
+                onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.borderColor = '#4F7FFF'; }}
+                onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.borderColor = '#252B3B'; }}
+              >
+                <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: seg.color || '#4F7FFF' }} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate" style={{ color: '#F1F3F9' }}>{seg.name}</p>
+                  {(seg.contact_count !== undefined || seg.contactCount !== undefined) && (
+                    <p className="text-xs mt-0.5" style={{ color: '#8B92A5' }}>
+                      {(seg.contact_count ?? seg.contactCount ?? 0).toLocaleString()} contacts
+                    </p>
+                  )}
+                </div>
+                <svg viewBox="0 0 24 24" fill="none" stroke={isSelected ? '#4F7FFF' : '#8B92A5'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 flex-shrink-0">
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
               </div>
-              <svg viewBox="0 0 24 24" fill="none" stroke="#8B92A5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 flex-shrink-0">
-                <polyline points="9 18 15 12 9 6" />
-              </svg>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
-      {/* Right: CSV Import */}
+      {/* Right: Segment contacts or Import */}
       <div className="flex-1 space-y-5">
+        {selectedSegment ? (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-semibold" style={{ color: '#F1F3F9' }}>{selectedSegment.name}</h3>
+                <p className="text-xs mt-0.5" style={{ color: '#8B92A5' }}>{segmentContacts.length} contacts</p>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => { setSelectedSegment(null); setSegmentContacts([]); }}>
+                ✕ Close
+              </Button>
+            </div>
+            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #252B3B' }}>
+              {segmentContactsLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="#4F7FFF" strokeWidth="2">
+                    <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+                  </svg>
+                </div>
+              ) : segmentContacts.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-2">
+                  <p className="text-sm" style={{ color: '#8B92A5' }}>No contacts in this segment yet.</p>
+                  <p className="text-xs" style={{ color: '#4B5563' }}>Import contacts and select this segment to add them.</p>
+                </div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid #252B3B', background: '#181C27' }}>
+                      {['Email', 'First Name', 'Last Name', 'Status'].map((h) => (
+                        <th key={h} className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: '#8B92A5' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody style={{ background: '#181C27' }}>
+                    {segmentContacts.map((c, i) => (
+                      <tr key={c.id} style={{ borderBottom: i < segmentContacts.length - 1 ? '1px solid #252B3B' : 'none' }}>
+                        <td className="px-4 py-3 font-medium" style={{ color: '#4F7FFF' }}>{c.email}</td>
+                        <td className="px-4 py-3" style={{ color: '#F1F3F9' }}>{c.first_name || '—'}</td>
+                        <td className="px-4 py-3" style={{ color: '#F1F3F9' }}>{c.last_name || '—'}</td>
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ background: '#052E16', color: '#22C55E' }}>
+                            {c.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        ) : (
+        <div className="space-y-5">
         <div className="flex items-center justify-between">
           <h3 className="text-base font-semibold" style={{ color: '#F1F3F9' }}>Import Contacts</h3>
           {file && (
@@ -223,9 +313,9 @@ export default function Audience() {
             <div>
               <p className="font-semibold" style={{ color: '#22C55E' }}>Import successful!</p>
               <p className="text-sm mt-1" style={{ color: '#F1F3F9' }}>
-                {importResult.imported ?? importResult.count ?? 0} contacts imported
-                {importResult.skipped > 0 ? `, ${importResult.skipped} skipped` : ''}
-                {importResult.errors > 0 ? `, ${importResult.errors} errors` : ''}.
+                {importResult.imported ?? 0} contacts imported
+                {importResult.updated > 0 ? `, ${importResult.updated} updated` : ''}
+                {importResult.skipped > 0 ? `, ${importResult.skipped} skipped` : ''}.
               </p>
             </div>
           </div>
@@ -371,6 +461,26 @@ export default function Audience() {
               </div>
             )}
 
+            {/* Segment selector */}
+            <div>
+              <label className="block text-sm font-medium mb-1.5" style={{ color: '#8B92A5' }}>
+                Import into segment <span style={{ color: '#4B5563' }}>(optional)</span>
+              </label>
+              <select
+                value={importSegmentId}
+                onChange={(e) => setImportSegmentId(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-lg text-sm outline-none"
+                style={{ background: '#0F1117', border: '1px solid #252B3B', color: importSegmentId ? '#F1F3F9' : '#8B92A5' }}
+                onFocus={(e) => (e.target.style.borderColor = '#4F7FFF')}
+                onBlur={(e) => (e.target.style.borderColor = '#252B3B')}
+              >
+                <option value="">No segment — add to all contacts only</option>
+                {storeSegments.map((seg) => (
+                  <option key={seg.id || seg._id} value={seg.id || seg._id}>{seg.name}</option>
+                ))}
+              </select>
+            </div>
+
             {/* Import button */}
             <div className="flex justify-end">
               <Button variant="primary" size="md" onClick={handleImport} loading={importing}>
@@ -383,6 +493,8 @@ export default function Audience() {
               </Button>
             </div>
           </div>
+        )}
+        </div>
         )}
       </div>
     </div>
