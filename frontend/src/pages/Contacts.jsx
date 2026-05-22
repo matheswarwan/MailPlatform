@@ -43,20 +43,32 @@ const MOCK_CONTACTS = [
 const PAGE_SIZE = 10;
 
 export default function Contacts() {
-  const { contacts: storeContacts, contactsLoading, fetchContacts, addContact, deleteContact } = useAppStore();
+  const {
+    contacts: storeContacts,
+    contactsLoading,
+    fetchContacts,
+    addContact,
+    deleteContact,
+    attributeDefinitions,
+    fetchAttributeDefinitions,
+  } = useAppStore();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selected, setSelected] = useState([]);
   const [expandedId, setExpandedId] = useState(null);
   const [page, setPage] = useState(1);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [addForm, setAddForm] = useState({ email: '', firstName: '', lastName: '', tags: '' });
+  const [addForm, setAddForm] = useState({ email: '', firstName: '', lastName: '', tags: '', sex: '', customFields: {} });
   const [addLoading, setAddLoading] = useState(false);
   const [addError, setAddError] = useState('');
 
   useEffect(() => {
     fetchContacts({ page, search, status: statusFilter !== 'all' ? statusFilter : undefined });
   }, [page, search, statusFilter]);
+
+  useEffect(() => {
+    fetchAttributeDefinitions();
+  }, []);
 
   const contacts = storeContacts.length > 0 ? storeContacts : MOCK_CONTACTS;
 
@@ -96,9 +108,11 @@ export default function Contacts() {
         firstName: addForm.firstName,
         lastName: addForm.lastName,
         tags: addForm.tags.split(',').map((t) => t.trim()).filter(Boolean),
+        sex: addForm.sex || undefined,
+        customFields: Object.keys(addForm.customFields).length > 0 ? addForm.customFields : undefined,
       });
       setShowAddModal(false);
-      setAddForm({ email: '', firstName: '', lastName: '', tags: '' });
+      setAddForm({ email: '', firstName: '', lastName: '', tags: '', sex: '', customFields: {} });
     } catch (err) {
       setAddError(err.response?.data?.message || 'Failed to add contact.');
     } finally {
@@ -440,7 +454,7 @@ export default function Contacts() {
       </div>
 
       {/* Add Contact Modal */}
-      <Modal isOpen={showAddModal} onClose={() => { setShowAddModal(false); setAddError(''); }} title="Add Contact">
+      <Modal isOpen={showAddModal} onClose={() => { setShowAddModal(false); setAddError(''); setAddForm({ email: '', firstName: '', lastName: '', tags: '', sex: '', customFields: {} }); }} title="Add Contact">
         <form onSubmit={handleAddContact} className="space-y-4">
           <div>
             <label className="block text-sm font-medium mb-1.5" style={{ color: '#8B92A5' }}>Email <span style={{ color: '#EF4444' }}>*</span></label>
@@ -497,13 +511,99 @@ export default function Contacts() {
               onBlur={(e) => (e.target.style.borderColor = '#252B3B')}
             />
           </div>
+          <div>
+            <label className="block text-sm font-medium mb-1.5" style={{ color: '#8B92A5' }}>Sex</label>
+            <select
+              value={addForm.sex}
+              onChange={(e) => setAddForm({ ...addForm, sex: e.target.value })}
+              className="w-full px-4 py-2.5 rounded-lg text-sm outline-none"
+              style={{ background: '#0F1117', border: '1px solid #252B3B', color: '#F1F3F9' }}
+              onFocus={(e) => (e.target.style.borderColor = '#4F7FFF')}
+              onBlur={(e) => (e.target.style.borderColor = '#252B3B')}
+            >
+              <option value="">Prefer not to say</option>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+              <option value="non-binary">Non-binary</option>
+            </select>
+          </div>
+
+          {attributeDefinitions.length > 0 && (
+            <div className="space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wider pt-1" style={{ color: '#8B92A5', borderTop: '1px solid #252B3B', paddingTop: 12 }}>Custom Fields</p>
+              {attributeDefinitions.map((def) => (
+                <div key={def.id}>
+                  <label className="block text-sm font-medium mb-1.5" style={{ color: '#8B92A5' }}>{def.name}</label>
+                  {def.type === 'text' && (
+                    <input
+                      type="text"
+                      value={addForm.customFields[def.key] || ''}
+                      onChange={(e) => setAddForm({ ...addForm, customFields: { ...addForm.customFields, [def.key]: e.target.value } })}
+                      className="w-full px-4 py-2.5 rounded-lg text-sm outline-none"
+                      style={{ background: '#0F1117', border: '1px solid #252B3B', color: '#F1F3F9' }}
+                      onFocus={(e) => (e.target.style.borderColor = '#4F7FFF')}
+                      onBlur={(e) => (e.target.style.borderColor = '#252B3B')}
+                    />
+                  )}
+                  {def.type === 'number' && (
+                    <input
+                      type="number"
+                      value={addForm.customFields[def.key] || ''}
+                      onChange={(e) => setAddForm({ ...addForm, customFields: { ...addForm.customFields, [def.key]: e.target.value } })}
+                      className="w-full px-4 py-2.5 rounded-lg text-sm outline-none"
+                      style={{ background: '#0F1117', border: '1px solid #252B3B', color: '#F1F3F9' }}
+                      onFocus={(e) => (e.target.style.borderColor = '#4F7FFF')}
+                      onBlur={(e) => (e.target.style.borderColor = '#252B3B')}
+                    />
+                  )}
+                  {def.type === 'date' && (
+                    <input
+                      type="date"
+                      value={addForm.customFields[def.key] || ''}
+                      onChange={(e) => setAddForm({ ...addForm, customFields: { ...addForm.customFields, [def.key]: e.target.value } })}
+                      className="w-full px-4 py-2.5 rounded-lg text-sm outline-none"
+                      style={{ background: '#0F1117', border: '1px solid #252B3B', color: '#F1F3F9' }}
+                      onFocus={(e) => (e.target.style.borderColor = '#4F7FFF')}
+                      onBlur={(e) => (e.target.style.borderColor = '#252B3B')}
+                    />
+                  )}
+                  {def.type === 'boolean' && (
+                    <div className="flex items-center gap-2 px-4 py-2.5">
+                      <input
+                        type="checkbox"
+                        checked={!!addForm.customFields[def.key]}
+                        onChange={(e) => setAddForm({ ...addForm, customFields: { ...addForm.customFields, [def.key]: e.target.checked } })}
+                        className="rounded accent-blue-500 cursor-pointer w-4 h-4"
+                      />
+                      <span className="text-sm" style={{ color: '#F1F3F9' }}>{def.name}</span>
+                    </div>
+                  )}
+                  {def.type === 'select' && (
+                    <select
+                      value={addForm.customFields[def.key] || ''}
+                      onChange={(e) => setAddForm({ ...addForm, customFields: { ...addForm.customFields, [def.key]: e.target.value } })}
+                      className="w-full px-4 py-2.5 rounded-lg text-sm outline-none"
+                      style={{ background: '#0F1117', border: '1px solid #252B3B', color: '#F1F3F9' }}
+                      onFocus={(e) => (e.target.style.borderColor = '#4F7FFF')}
+                      onBlur={(e) => (e.target.style.borderColor = '#252B3B')}
+                    >
+                      <option value="">Select…</option>
+                      {(def.options || []).map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
 
           {addError && (
             <p className="text-sm" style={{ color: '#EF4444' }}>{addError}</p>
           )}
 
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="secondary" size="md" type="button" onClick={() => { setShowAddModal(false); setAddError(''); }}>
+            <Button variant="secondary" size="md" type="button" onClick={() => { setShowAddModal(false); setAddError(''); setAddForm({ email: '', firstName: '', lastName: '', tags: '', sex: '', customFields: {} }); }}>
               Cancel
             </Button>
             <Button variant="primary" size="md" type="submit" loading={addLoading}>
