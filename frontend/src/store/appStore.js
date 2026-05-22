@@ -208,6 +208,71 @@ const useAppStore = create((set, get) => ({
     set({ preferenceConfig: config });
     return config;
   },
+
+  updateSegment: async (id, data) => {
+    const res = await client.put(`/segments/${id}`, data);
+    const segment = res.data.segment || res.data;
+    set((state) => ({
+      segments: state.segments.map((s) => (s.id === id ? segment : s)),
+    }));
+    return segment;
+  },
+
+  deleteSegment: async (id) => {
+    await client.delete('/segments/' + id);
+    set((state) => ({
+      segments: state.segments.filter((s) => s.id !== id),
+    }));
+  },
+
+  // ── Contact Attributes ────────────────────────────────────────
+  contactFields: [],           // all fields (standard + custom) for segment builder
+  attributeDefinitions: [],    // custom field definitions only
+  attributesLoading: false,
+
+  fetchContactFields: async () => {
+    set({ attributesLoading: true });
+    try {
+      const res = await client.get('/contact-attributes');
+      set({ contactFields: res.data.fields || [], attributesLoading: false });
+    } catch {
+      set({ attributesLoading: false });
+    }
+  },
+
+  fetchAttributeDefinitions: async () => {
+    try {
+      const res = await client.get('/contact-attributes/definitions');
+      set({ attributeDefinitions: res.data.definitions || [] });
+    } catch {}
+  },
+
+  createAttributeDefinition: async (data) => {
+    const res = await client.post('/contact-attributes/definitions', data);
+    const def = res.data.definition;
+    set((state) => ({ attributeDefinitions: [...state.attributeDefinitions, def] }));
+    // Also refresh contactFields so the new field appears in segment builder
+    const fieldsRes = await client.get('/contact-attributes');
+    set({ contactFields: fieldsRes.data.fields || [] });
+    return def;
+  },
+
+  deleteAttributeDefinition: async (id) => {
+    await client.delete(`/contact-attributes/definitions/${id}`);
+    set((state) => ({
+      attributeDefinitions: state.attributeDefinitions.filter((d) => d.id !== id),
+      contactFields: state.contactFields.filter((f) => !f.key.startsWith('custom:') || state.attributeDefinitions.find((d) => d.id !== id && `custom:${d.key}` === f.key)),
+    }));
+  },
+
+  previewSegment: async (rules) => {
+    try {
+      const res = await client.post('/segments/preview', { rules });
+      return res.data.count || 0;
+    } catch {
+      return null;
+    }
+  },
 }));
 
 export default useAppStore;
