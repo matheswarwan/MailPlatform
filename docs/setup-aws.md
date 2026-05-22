@@ -23,7 +23,7 @@ Complete step-by-step instructions for provisioning every AWS service MailFlow d
 6. [Environment Variables Summary](#6-environment-variables-summary)
 7. [DNS Records Reference](#7-dns-records-reference)
 8. [Sending Limits & Sandbox Exit](#8-sending-limits--sandbox-exit)
-9. [Optional — ECS Fargate Deployment](#9-optional--ecs-fargate-deployment)
+9. [Production Deployment](#9-production-deployment)
 
 ---
 
@@ -454,11 +454,50 @@ If you send more than ~50,000 emails/month, request dedicated IPs:
 
 ---
 
-## 9. Optional — ECS Fargate Deployment
+## 9. Production Deployment
 
-For hosting the backend API in AWS without managing servers.
+This section covers deploying both the backend API and the frontend to AWS. The final architecture looks like this:
 
-### 9.1 Build and push a Docker image
+```
+Users
+  │
+  ▼
+CloudFront (CDN)
+  ├── /api/*  ──────────────────▶  ALB  ──▶  ECS Fargate (backend)
+  │                                               │
+  └── /*  (static files) ──▶  S3 bucket          ├── RDS PostgreSQL
+                              (frontend build)    ├── SES / SNS
+                                                  └── S3 (logos)
+```
+
+**Prerequisites for this section**
+- Docker installed locally
+- AWS CLI configured (`aws configure`)
+- Sections 1–8 complete (IAM user, RDS, S3, SES, SNS all provisioned)
+- A registered domain (can be in Route 53 or any registrar)
+
+---
+
+### 9.1 Request a TLS certificate (ACM)
+
+All production traffic must run over HTTPS. AWS Certificate Manager (ACM) issues free certificates.
+
+1. Open [ACM Console](https://console.aws.amazon.com/acm/) — **make sure the region is us-east-1** if you plan to use CloudFront (CloudFront requires certificates in us-east-1 regardless of your app region)
+2. Click **Request** → **Request a public certificate**
+3. Add domain names:
+   - `yourdomain.com`
+   - `api.yourdomain.com` (if you want a separate API subdomain)
+   - Or use a wildcard: `*.yourdomain.com`
+4. Validation method: **DNS validation** (recommended)
+5. Click **Request**
+6. Expand the certificate and click **Create records in Route 53** (if your domain is in Route 53) — or manually add the CNAME records shown to your DNS provider
+7. Wait for status to change to **Issued** (usually 2–5 minutes after DNS propagates)
+
+---
+
+### 9.2 Deploy the backend — ECS Fargate
+
+#### 9.2.1 Create the Dockerfile
 
 Create `backend/Dockerfile`:
 
@@ -472,7 +511,9 @@ EXPOSE 3001
 CMD ["node", "src/index.js"]
 ```
 
-Push to ECR:
+#### 9.2.2 Create an ECR repository and push
+
+Replace `123456789012` with your actual AWS account ID:
 
 ```bash
 # Authenticate Docker to ECR
@@ -480,57 +521,334 @@ aws ecr get-login-password --region us-east-2 | \
   docker login --username AWS --password-stdin \
   123456789012.dkr.ecr.us-east-2.amazonaws.com
 
-# Create repository (once)
+# Create repository (run once)
 aws ecr create-repository --repository-name mailflow-backend --region us-east-2
 
 # Build and push
 docker build -t mailflow-backend ./backend
-docker tag mailflow-backend:latest 123456789012.dkr.ecr.us-east-2.amazonaws.com/mailflow-backend:latest
-docker push 123456789012.dkr.ecr.us-east-2.amazonaws.com/mailflow-backend:latest
+docker tag mailflow-backend:latest \
+  123456789012.dkr.ecr.us-east-2.amazonaws.com/mailflow-backend:latest
+docker push \
+  123456789012.dkr.ecr.us-east-2.amazonaws.com/mailflow-backend:latest
 ```
 
-### 9.2 Create an ECS cluster
+#### 9.2.3 Store secrets in AWS Secrets Manager
 
-1. [ECS Console](https://console.aws.amazon.com/ecs/) → **Clusters** → **Create cluster**
-2. Cluster name: `mailflow`
-3. Infrastructure: **AWS Fargate** (serverless — no EC2 to manage)
-4. Click **Create**
-
-### 9.3 Create a Task Definition
-
-1. **Task Definitions** → **Create new task definition**
-2. Launch type: **Fargate**
-3. Task role: create an IAM role with the same policy as `mailflow-app-policy`
-4. Container:
-   - Image URI: your ECR image URI
-   - Port: 3001
-   - Environment variables: add all keys from `.env` (or reference AWS Secrets Manager)
-5. CPU: 0.5 vCPU, Memory: 1 GB (scale up as needed)
-
-### 9.4 Store secrets in Secrets Manager (recommended)
-
-Instead of hardcoding env vars in the task definition:
+Never put secrets in your task definition or source code. Store them once:
 
 ```bash
 aws secretsmanager create-secret \
-  --name mailflow/env \
-  --secret-string file://backend/.env \
+  --name mailflow/production \
+  --region us-east-2 \
+  --secret-string '{
+    "DATABASE_URL": "postgresql://...",
+    "JWT_SECRET": "...",
+    "AWS_ACCESS_KEY_ID": "AKIA...",
+    "AWS_SECRET_ACCESS_KEY": "...",
+    "AWS_REGION": "us-east-2",
+    "S3_BUCKET": "mailflow-assets-0173-6777-6352",
+    "SES_CONFIGURATION_SET": "mailflow-events",
+    "SNS_TOPIC_ARN": "arn:aws:sns:us-east-2:123456789012:mailflow-ses-events",
+    "APP_URL": "https://yourdomain.com",
+    "FRONTEND_URL": "https://yourdomain.com",
+    "SES_SEND_RATE": "14"
+  }'
+```
+
+To update a secret later:
+```bash
+aws secretsmanager update-secret \
+  --secret-id mailflow/production \
+  --region us-east-2 \
+  --secret-string '{"KEY": "new-value", ...}'
+```
+
+#### 9.2.4 Create an ECS Task Execution IAM Role
+
+This role lets ECS pull secrets from Secrets Manager and images from ECR.
+
+1. [IAM Console](https://console.aws.amazon.com/iam/) → **Roles** → **Create role**
+2. Trusted entity: **AWS service** → **Elastic Container Service Task**
+3. Attach policies:
+   - `AmazonECSTaskExecutionRolePolicy` (managed — allows ECR pull + CloudWatch logs)
+   - Add an inline policy to allow Secrets Manager access:
+     ```json
+     {
+       "Version": "2012-10-17",
+       "Statement": [{
+         "Effect": "Allow",
+         "Action": ["secretsmanager:GetSecretValue"],
+         "Resource": "arn:aws:secretsmanager:us-east-2:123456789012:secret:mailflow/production*"
+       }]
+     }
+     ```
+4. Role name: `mailflow-ecs-execution-role`
+
+#### 9.2.5 Create an Application Load Balancer
+
+1. [EC2 Console](https://console.aws.amazon.com/ec2/) → **Load Balancers** → **Create load balancer**
+2. Type: **Application Load Balancer**
+3. Name: `mailflow-alb`
+4. Scheme: **Internet-facing**
+5. Listeners:
+   - Add **HTTPS (443)** → forward to a new target group `mailflow-api-tg` (port 3001, HTTP, health check path `/health`)
+   - Add **HTTP (80)** → redirect to HTTPS 443
+6. Security group: create `mailflow-alb-sg` with inbound rules allowing 443 and 80 from `0.0.0.0/0`
+7. SSL certificate: select the ACM certificate from step 9.1
+8. Click **Create**
+
+Copy the **ALB DNS name** — you will need it for Route 53.
+
+#### 9.2.6 Create an ECS cluster and service
+
+**Cluster:**
+1. [ECS Console](https://console.aws.amazon.com/ecs/) → **Clusters** → **Create cluster**
+2. Name: `mailflow`, Infrastructure: **AWS Fargate** → **Create**
+
+**Task Definition:**
+1. **Task Definitions** → **Create new task definition with JSON** → paste:
+```json
+{
+  "family": "mailflow-backend",
+  "executionRoleArn": "arn:aws:iam::123456789012:role/mailflow-ecs-execution-role",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "containerDefinitions": [{
+    "name": "mailflow-backend",
+    "image": "123456789012.dkr.ecr.us-east-2.amazonaws.com/mailflow-backend:latest",
+    "portMappings": [{"containerPort": 3001, "protocol": "tcp"}],
+    "secrets": [
+      {"name": "DATABASE_URL",      "valueFrom": "arn:aws:secretsmanager:us-east-2:123456789012:secret:mailflow/production:DATABASE_URL::"},
+      {"name": "JWT_SECRET",        "valueFrom": "arn:aws:secretsmanager:us-east-2:123456789012:secret:mailflow/production:JWT_SECRET::"},
+      {"name": "AWS_ACCESS_KEY_ID", "valueFrom": "arn:aws:secretsmanager:us-east-2:123456789012:secret:mailflow/production:AWS_ACCESS_KEY_ID::"},
+      {"name": "AWS_SECRET_ACCESS_KEY","valueFrom":"arn:aws:secretsmanager:us-east-2:123456789012:secret:mailflow/production:AWS_SECRET_ACCESS_KEY::"},
+      {"name": "AWS_REGION",        "valueFrom": "arn:aws:secretsmanager:us-east-2:123456789012:secret:mailflow/production:AWS_REGION::"},
+      {"name": "S3_BUCKET",         "valueFrom": "arn:aws:secretsmanager:us-east-2:123456789012:secret:mailflow/production:S3_BUCKET::"},
+      {"name": "SES_CONFIGURATION_SET","valueFrom":"arn:aws:secretsmanager:us-east-2:123456789012:secret:mailflow/production:SES_CONFIGURATION_SET::"},
+      {"name": "SNS_TOPIC_ARN",     "valueFrom": "arn:aws:secretsmanager:us-east-2:123456789012:secret:mailflow/production:SNS_TOPIC_ARN::"},
+      {"name": "APP_URL",           "valueFrom": "arn:aws:secretsmanager:us-east-2:123456789012:secret:mailflow/production:APP_URL::"},
+      {"name": "FRONTEND_URL",      "valueFrom": "arn:aws:secretsmanager:us-east-2:123456789012:secret:mailflow/production:FRONTEND_URL::"}
+    ],
+    "environment": [
+      {"name": "NODE_ENV", "value": "production"},
+      {"name": "PORT",     "value": "3001"}
+    ],
+    "logConfiguration": {
+      "logDriver": "awslogs",
+      "options": {
+        "awslogs-group": "/ecs/mailflow-backend",
+        "awslogs-region": "us-east-2",
+        "awslogs-stream-prefix": "ecs"
+      }
+    }
+  }]
+}
+```
+> Replace all `123456789012` with your AWS account ID.
+
+Create a CloudWatch log group first:
+```bash
+aws logs create-log-group --log-group-name /ecs/mailflow-backend --region us-east-2
+```
+
+**Service:**
+1. Inside the `mailflow` cluster → **Create service**
+2. Launch type: **Fargate**
+3. Task definition: `mailflow-backend` (latest)
+4. Service name: `mailflow-api`
+5. Desired tasks: `1` (use `2` for high availability)
+6. Networking: select your default VPC and subnets; security group must allow inbound from `mailflow-alb-sg` on port 3001
+7. Load balancer: **Application Load Balancer** → select `mailflow-alb` → target group `mailflow-api-tg`
+8. Click **Create service**
+
+The service will take ~2 minutes to reach a running state. Check the **Tasks** tab — the task health should show `RUNNING`.
+
+---
+
+### 9.3 Deploy the frontend — S3 + CloudFront
+
+The React app is a static build. Host it on S3 and serve it globally via CloudFront.
+
+#### 9.3.1 Build the frontend
+
+Update your production API URL before building. In `frontend/.env.production` (create this file):
+
+```env
+VITE_API_URL=https://yourdomain.com
+```
+
+Then build:
+
+```bash
+cd frontend
+npm run build
+# Output goes to frontend/dist/
+```
+
+#### 9.3.2 Create an S3 bucket for the frontend
+
+This bucket is private — CloudFront fetches from it, not public users directly.
+
+```bash
+aws s3 mb s3://mailflow-frontend-prod --region us-east-2
+```
+
+Upload the build:
+
+```bash
+aws s3 sync frontend/dist/ s3://mailflow-frontend-prod/ --delete
+```
+
+#### 9.3.3 Create a CloudFront distribution
+
+1. Open [CloudFront Console](https://console.aws.amazon.com/cloudfront/) → **Create distribution**
+2. **Origin domain**: select your `mailflow-frontend-prod` S3 bucket
+3. **Origin access**: **Origin access control settings (recommended)** → create a new OAC → CloudFront will show you a bucket policy to apply to S3
+4. **Viewer protocol policy**: Redirect HTTP to HTTPS
+5. **Default root object**: `index.html`
+6. **Custom error responses** — add two rules (required for React Router client-side routing):
+   - Error code `403` → Response page `/index.html` → HTTP response code `200`
+   - Error code `404` → Response page `/index.html` → HTTP response code `200`
+7. **Alternate domain names (CNAMEs)**: add `yourdomain.com` (and `www.yourdomain.com` if needed)
+8. **Custom SSL certificate**: select the ACM certificate from step 9.1 (must be in us-east-1)
+9. Click **Create distribution** (takes 5–10 minutes to deploy globally)
+
+Apply the S3 bucket policy CloudFront shows you — it allows only CloudFront to read the bucket:
+```bash
+# Paste the policy shown in the CloudFront console into a file, then apply:
+aws s3api put-bucket-policy \
+  --bucket mailflow-frontend-prod \
+  --policy file://cloudfront-bucket-policy.json
+```
+
+Copy the **CloudFront domain name** (e.g. `d1abc.cloudfront.net`) for the next step.
+
+#### 9.3.4 Route /api/* to the ALB (single domain setup)
+
+If you want both the frontend and API on the same domain (`yourdomain.com`), add a second origin to your CloudFront distribution:
+
+1. CloudFront distribution → **Origins** → **Create origin**
+   - Origin domain: your ALB DNS name (`mailflow-alb-xxxxxxxx.us-east-2.elb.amazonaws.com`)
+   - Protocol: HTTPS only
+   - Origin name: `mailflow-api`
+2. **Behaviors** → **Create behavior**
+   - Path pattern: `/api/*`
+   - Origin: `mailflow-api`
+   - Viewer protocol: HTTPS only
+   - Cache policy: **CachingDisabled** (API responses must not be cached)
+   - Origin request policy: **AllViewer** (forward all headers to the backend)
+
+Now all requests to `yourdomain.com/api/*` go to ECS, and everything else serves the React app from S3.
+
+---
+
+### 9.4 Configure DNS (Route 53)
+
+If your domain is registered outside Route 53, create a hosted zone first:
+
+```bash
+aws route53 create-hosted-zone \
+  --name yourdomain.com \
+  --caller-reference $(date +%s)
+```
+
+Copy the 4 nameservers from the hosted zone and update them at your domain registrar.
+
+**Add DNS records:**
+
+1. Open [Route 53 Console](https://console.aws.amazon.com/route53/) → **Hosted zones** → your domain
+2. Click **Create record**:
+
+| Name | Type | Route traffic to |
+|------|------|-----------------|
+| `yourdomain.com` | A (Alias) | CloudFront distribution |
+| `www.yourdomain.com` | A (Alias) | CloudFront distribution |
+
+For Alias records, choose:
+- Route traffic to: **Alias to CloudFront distribution**
+- Select your distribution from the dropdown
+
+---
+
+### 9.5 Run database migrations on production
+
+Connect to your RDS instance from your local machine (ensure your IP is in the RDS security group):
+
+```bash
+cd backend
+
+# Point at production DB temporarily
+DATABASE_URL="postgresql://mailflow:PASSWORD@mailflow-db.xxxx.us-east-2.rds.amazonaws.com:5432/mailflow" \
+  npm run migrate
+```
+
+Or SSH into a bastion host if RDS is not publicly accessible.
+
+---
+
+### 9.6 Update the SNS webhook subscription
+
+Now that your app is deployed, update your SNS subscription to point to the production URL:
+
+1. SNS Console → `mailflow-ses-events` topic → **Subscriptions**
+2. Delete the old ngrok subscription (if any)
+3. **Create subscription** → Protocol: HTTPS → Endpoint: `https://yourdomain.com/api/webhooks/ses`
+4. The ECS service will confirm the subscription automatically within a few seconds
+
+---
+
+### 9.7 Deploying updates
+
+After every code change, rebuild and push a new image to ECR, then force a new ECS deployment:
+
+```bash
+# Build and push new image
+docker build -t mailflow-backend ./backend
+docker tag mailflow-backend:latest \
+  123456789012.dkr.ecr.us-east-2.amazonaws.com/mailflow-backend:latest
+docker push \
+  123456789012.dkr.ecr.us-east-2.amazonaws.com/mailflow-backend:latest
+
+# Force ECS to pull the new image
+aws ecs update-service \
+  --cluster mailflow \
+  --service mailflow-api \
+  --force-new-deployment \
   --region us-east-2
 ```
 
-Reference the secret in your task definition — Fargate injects the values as environment variables at container start.
+For frontend updates:
 
-### 9.5 Create a Service
+```bash
+cd frontend
+npm run build
+aws s3 sync dist/ s3://mailflow-frontend-prod/ --delete
 
-1. Inside the cluster → **Create service**
-2. Launch type: Fargate
-3. Task definition: `mailflow-backend`
-4. Service name: `mailflow-api`
-5. Number of tasks: 1 (increase for HA)
-6. Load balancer: attach an **Application Load Balancer** on port 443 (HTTPS)
-7. Click **Create**
+# Invalidate CloudFront cache so users get the new files immediately
+aws cloudfront create-invalidation \
+  --distribution-id YOUR_DISTRIBUTION_ID \
+  --paths "/*"
+```
 
-The ALB provides a stable DNS name. Point your domain at it via Route 53.
+---
+
+### 9.8 Production checklist
+
+Before going live, verify each item:
+
+- [ ] ACM certificate status is **Issued**
+- [ ] CloudFront distribution is **Deployed** (not In Progress)
+- [ ] `https://yourdomain.com` loads the React app
+- [ ] `https://yourdomain.com/api/health` returns `{"status":"ok"}`
+- [ ] Login works and JWT is returned
+- [ ] Send a test campaign — check SES **Sending statistics** for the delivery
+- [ ] SNS subscription is **Confirmed** (not Pending)
+- [ ] A test bounce/complaint updates the contact status in the DB
+- [ ] RDS security group does **not** allow `0.0.0.0/0` in production (restrict to ECS security group only)
+- [ ] SES production access requested (not in sandbox)
+- [ ] DKIM, SPF, DMARC DNS records all verified in SES console
 
 ---
 
