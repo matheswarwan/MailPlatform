@@ -11,8 +11,16 @@ const useAppStore = create((set, get) => ({
     set({ contactsLoading: true });
     try {
       const res = await client.get('/contacts', { params });
+      const normalize = (c) => ({
+        ...c,
+        _id: c.id,
+        firstName: c.first_name,
+        lastName: c.last_name,
+        createdAt: c.created_at,
+        updatedAt: c.updated_at,
+      });
       set({
-        contacts: res.data.contacts || [],
+        contacts: (res.data.contacts || []).map(normalize),
         contactsMeta: res.data.pagination || { total: 0, page: 1, pages: 1 },
         contactsLoading: false,
       });
@@ -21,11 +29,12 @@ const useAppStore = create((set, get) => ({
     }
   },
 
-  importContacts: async (file) => {
+  importContacts: async (file, segmentId = null) => {
     const formData = new FormData();
     formData.append('file', file);
+    const url = segmentId ? `/contacts/import?segmentId=${segmentId}` : '/contacts/import';
     try {
-      const res = await client.post('/contacts/import', formData, {
+      const res = await client.post(url, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       return res.data;
@@ -91,6 +100,26 @@ const useAppStore = create((set, get) => ({
     set((state) => ({
       campaigns: state.campaigns.filter((c) => c.id !== id),
     }));
+  },
+
+  copyCampaign: async (id) => {
+    const res = await client.get(`/campaigns/${id}`);
+    const src = res.data.campaign || res.data;
+    const blocks = src.template_blocks || src.blocks || [];
+    const payload = {
+      name: `Copy of ${src.name}`,
+      subjectLine: src.subject_line || src.subject || '',
+      previewText: src.preview_text || '',
+      fromName: src.from_name || '',
+      fromEmail: src.from_email || '',
+      replyTo: src.reply_to || '',
+      segmentId: src.segment_id || '',
+      blocks,
+    };
+    const createRes = await client.post('/campaigns', payload);
+    const campaign = createRes.data.campaign || createRes.data;
+    set((state) => ({ campaigns: [campaign, ...state.campaigns] }));
+    return campaign;
   },
 
   // ── Segments ──────────────────────────────────────────────────

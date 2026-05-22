@@ -31,13 +31,19 @@ export function renderTemplate({
 }) {
   const mjmlContent = buildMjml(blocks, brandColor);
 
-  const { html, errors } = mjml2html(mjmlContent, {
+  const { html: rawHtml, errors } = mjml2html(mjmlContent, {
     validationLevel: 'soft',
     minify: false,
   });
 
   if (errors && errors.length > 0) {
     console.warn('MJML rendering warnings:', errors);
+  }
+
+  const html = typeof rawHtml === 'string' ? rawHtml : '';
+  if (!html) {
+    console.error('MJML produced no HTML output. MJML input:\n', mjmlContent);
+    throw new Error('Template rendering failed: MJML produced no output');
   }
 
   // Replace template variables in rendered HTML
@@ -81,9 +87,61 @@ function buildMjml(blocks, brandColor) {
 }
 
 /**
+ * Normalize a block from CampaignBuilder format (nested `content` object)
+ * to the flat format expected by the renderers.
+ * Also maps property name differences between the two formats.
+ */
+function normalizeBlock(block) {
+  if (!block.content || typeof block.content !== 'object') return block;
+
+  const c = block.content;
+  const type = block.type;
+
+  // Map CampaignBuilder property names → templateService property names
+  switch (type) {
+    case 'hero':
+      return {
+        type,
+        title: c.headline || '',
+        subtitle: c.subheadline || '',
+        backgroundColor: c.bgColor || '#4F7FFF',
+      };
+    case 'text':
+      return { type, content: c.content || '' };
+    case 'button':
+      return {
+        type,
+        text: c.label || 'Click Here',
+        url: c.url || '#',
+        backgroundColor: c.bgColor || '#4F7FFF',
+        textColor: '#ffffff',
+      };
+    case 'divider':
+      return { type, color: c.color || '#e5e7eb', borderWidth: c.borderWidth || 1 };
+    case 'social': {
+      // Convert {twitter, linkedin, instagram} URLs → links array
+      const links = [];
+      if (c.twitter) links.push({ platform: 'twitter', url: c.twitter });
+      if (c.linkedin) links.push({ platform: 'linkedin', url: c.linkedin });
+      if (c.instagram) links.push({ platform: 'instagram', url: c.instagram });
+      return { type: 'social_links', links };
+    }
+    case 'footer':
+      return {
+        type,
+        companyName: c.company || '',
+        address: c.address || '',
+      };
+    default:
+      return { type, ...c };
+  }
+}
+
+/**
  * Render a single block to an MJML section string.
  */
-function renderBlock(block, brandColor) {
+function renderBlock(rawBlock, brandColor) {
+  const block = normalizeBlock(rawBlock);
   switch (block.type) {
     case 'hero':
       return renderHeroBlock(block, brandColor);
@@ -358,7 +416,8 @@ function applyVariables(html, contact, unsubscribeUrl, preferenceUrl) {
 function generateTextVersion(blocks, contact, unsubscribeUrl, preferenceUrl) {
   const lines = [];
 
-  for (const block of blocks) {
+  for (const rawBlock of blocks) {
+    const block = normalizeBlock(rawBlock);
     switch (block.type) {
       case 'hero':
         if (block.title) lines.push(block.title.toUpperCase());
@@ -395,6 +454,7 @@ function generateTextVersion(blocks, contact, unsubscribeUrl, preferenceUrl) {
         break;
 
       case 'social_links':
+      case 'social':
         if (block.links && block.links.length > 0) {
           lines.push('Follow us:');
           for (const link of block.links) {

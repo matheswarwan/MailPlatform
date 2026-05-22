@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import useAppStore from '../store/appStore';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
@@ -28,8 +28,10 @@ function pct(n) {
 }
 
 export default function Campaigns() {
-  const { campaigns, campaignsLoading, fetchCampaigns, deleteCampaign } = useAppStore();
+  const { campaigns, campaignsLoading, fetchCampaigns, deleteCampaign, copyCampaign } = useAppStore();
+  const navigate = useNavigate();
   const [deleting, setDeleting] = useState(null);
+  const [copying, setCopying] = useState(null);
 
   useEffect(() => {
     fetchCampaigns();
@@ -60,6 +62,19 @@ export default function Campaigns() {
       await deleteCampaign(id);
     } finally {
       setDeleting(null);
+    }
+  };
+
+  const handleCopy = async (id) => {
+    setCopying(id);
+    try {
+      const newCampaign = await copyCampaign(id);
+      const newId = newCampaign.id || newCampaign._id;
+      navigate(`/campaigns/${newId}/edit`);
+    } catch {
+      // ignore
+    } finally {
+      setCopying(null);
     }
   };
 
@@ -142,7 +157,7 @@ export default function Campaigns() {
             <tbody>
               {campaigns.map((campaign, idx) => (
                 <tr
-                  key={campaign._id}
+                  key={campaign.id}
                   style={{
                     borderBottom: idx < campaigns.length - 1 ? '1px solid #252B3B' : 'none',
                   }}
@@ -179,7 +194,7 @@ export default function Campaigns() {
                   </td>
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-2">
-                      <Link to={`/campaigns/${campaign._id}/edit`}>
+                      <Link to={`/campaigns/${campaign.id}/edit`}>
                         <button
                           className="flex items-center justify-center w-8 h-8 rounded-lg transition-colors"
                           style={{ color: '#8B92A5' }}
@@ -200,8 +215,34 @@ export default function Campaigns() {
                         </button>
                       </Link>
                       <button
-                        onClick={() => handleDelete(campaign._id)}
-                        disabled={deleting === campaign._id}
+                        onClick={() => handleCopy(campaign.id)}
+                        disabled={copying === campaign.id}
+                        className="flex items-center justify-center w-8 h-8 rounded-lg transition-colors"
+                        style={{ color: '#8B92A5' }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = '#252B3B';
+                          e.currentTarget.style.color = '#22C55E';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'transparent';
+                          e.currentTarget.style.color = '#8B92A5';
+                        }}
+                        title="Duplicate"
+                      >
+                        {copying === campaign.id ? (
+                          <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+                          </svg>
+                        ) : (
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                          </svg>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => handleDelete(campaign.id)}
+                        disabled={deleting === campaign.id}
                         className="flex items-center justify-center w-8 h-8 rounded-lg transition-colors"
                         style={{ color: '#8B92A5' }}
                         onMouseEnter={(e) => {
@@ -214,7 +255,7 @@ export default function Campaigns() {
                         }}
                         title="Delete"
                       >
-                        {deleting === campaign._id ? (
+                        {deleting === campaign.id ? (
                           <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
                           </svg>

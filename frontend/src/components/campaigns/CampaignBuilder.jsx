@@ -15,12 +15,7 @@ const BLOCK_TYPES = [
         <path d="M3 9h18" />
       </svg>
     ),
-    preview: (
-      <div className="rounded-lg py-8 px-4 text-center" style={{ background: '#4F7FFF' }}>
-        <p className="text-white font-bold text-lg">Hero Headline</p>
-        <p className="text-blue-200 text-sm mt-1">Your subheadline goes here</p>
-      </div>
-    ),
+    defaultContent: { headline: 'Hero Headline', subheadline: 'Your subheadline goes here', bgColor: '#4F7FFF' },
   },
   {
     type: 'text',
@@ -33,13 +28,7 @@ const BLOCK_TYPES = [
         <line x1="14" y1="18" x2="3" y2="18" />
       </svg>
     ),
-    preview: (
-      <div className="space-y-1.5 py-2">
-        <div className="h-2.5 rounded" style={{ background: '#252B3B', width: '100%' }} />
-        <div className="h-2.5 rounded" style={{ background: '#252B3B', width: '90%' }} />
-        <div className="h-2.5 rounded" style={{ background: '#252B3B', width: '80%' }} />
-      </div>
-    ),
+    defaultContent: { content: 'Add your text here. You can write a message to your audience.' },
   },
   {
     type: 'button',
@@ -49,13 +38,7 @@ const BLOCK_TYPES = [
         <rect x="3" y="8" width="18" height="8" rx="4" />
       </svg>
     ),
-    preview: (
-      <div className="flex justify-center py-2">
-        <div className="px-6 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: '#4F7FFF' }}>
-          Click Here
-        </div>
-      </div>
-    ),
+    defaultContent: { label: 'Click Here', url: '', bgColor: '#4F7FFF' },
   },
   {
     type: 'divider',
@@ -65,11 +48,7 @@ const BLOCK_TYPES = [
         <line x1="3" y1="12" x2="21" y2="12" />
       </svg>
     ),
-    preview: (
-      <div className="py-3">
-        <div className="h-px w-full" style={{ background: '#252B3B' }} />
-      </div>
-    ),
+    defaultContent: {},
   },
   {
     type: 'social',
@@ -83,15 +62,7 @@ const BLOCK_TYPES = [
         <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
       </svg>
     ),
-    preview: (
-      <div className="flex justify-center gap-3 py-2">
-        {['Twitter', 'LinkedIn', 'Instagram'].map((s) => (
-          <div key={s} className="w-8 h-8 rounded-full flex items-center justify-center text-xs" style={{ background: '#252B3B', color: '#8B92A5' }}>
-            {s[0]}
-          </div>
-        ))}
-      </div>
-    ),
+    defaultContent: { twitter: '', linkedin: '', instagram: '' },
   },
   {
     type: 'footer',
@@ -102,14 +73,171 @@ const BLOCK_TYPES = [
         <path d="M3 15h18" />
       </svg>
     ),
-    preview: (
-      <div className="py-3 text-center" style={{ background: '#0F1117', borderRadius: 8 }}>
-        <p className="text-xs" style={{ color: '#8B92A5' }}>Company Name | Unsubscribe | Preferences</p>
-        <p className="text-xs mt-1" style={{ color: '#252B3B' }}>123 Main St, City, Country</p>
-      </div>
-    ),
+    defaultContent: { company: 'Company Name', address: '123 Main St, City, Country' },
   },
 ];
+
+// ─── Block preview renderer ───────────────────────────────────────────────────
+function BlockPreview({ block }) {
+  const c = block.content || {};
+  switch (block.type) {
+    case 'hero':
+      return (
+        <div className="rounded-lg py-8 px-4 text-center" style={{ background: c.bgColor || '#4F7FFF' }}>
+          <p className="text-white font-bold text-lg">{c.headline || 'Hero Headline'}</p>
+          <p className="text-blue-200 text-sm mt-1">{c.subheadline || 'Your subheadline goes here'}</p>
+        </div>
+      );
+    case 'text':
+      return (
+        <div className="py-3 px-2 text-sm whitespace-pre-wrap" style={{ color: '#F1F3F9' }}>
+          {c.content || 'Add your text here.'}
+        </div>
+      );
+    case 'button':
+      return (
+        <div className="flex justify-center py-3">
+          <div className="px-6 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: c.bgColor || '#4F7FFF' }}>
+            {c.label || 'Click Here'}
+          </div>
+        </div>
+      );
+    case 'divider':
+      return (
+        <div className="py-3">
+          <div className="h-px w-full" style={{ background: '#252B3B' }} />
+        </div>
+      );
+    case 'social':
+      return (
+        <div className="flex justify-center gap-3 py-3">
+          {['T', 'Li', 'Ig'].map((s) => (
+            <div key={s} className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: '#252B3B', color: '#8B92A5' }}>
+              {s}
+            </div>
+          ))}
+        </div>
+      );
+    case 'footer':
+      return (
+        <div className="py-4 text-center" style={{ background: '#0F1117', borderRadius: 8 }}>
+          <p className="text-xs" style={{ color: '#8B92A5' }}>{c.company || 'Company Name'} | Unsubscribe | Preferences</p>
+          <p className="text-xs mt-1" style={{ color: '#4B5563' }}>{c.address || '123 Main St, City, Country'}</p>
+        </div>
+      );
+    default:
+      return null;
+  }
+}
+
+// ─── Block editor panel ───────────────────────────────────────────────────────
+function BlockEditor({ block, onChange }) {
+  const c = block.content || {};
+
+  const update = (key, value) => onChange({ ...block, content: { ...c, [key]: value } });
+
+  const inputStyle = {
+    background: '#0F1117',
+    border: '1px solid #252B3B',
+    color: '#F1F3F9',
+    borderRadius: 8,
+    padding: '8px 12px',
+    fontSize: 13,
+    width: '100%',
+    outline: 'none',
+  };
+
+  const labelStyle = { color: '#8B92A5', fontSize: 12, marginBottom: 4, display: 'block' };
+
+  switch (block.type) {
+    case 'hero':
+      return (
+        <div className="space-y-3">
+          <div>
+            <label style={labelStyle}>Headline</label>
+            <input style={inputStyle} value={c.headline || ''} onChange={(e) => update('headline', e.target.value)} placeholder="Hero Headline" />
+          </div>
+          <div>
+            <label style={labelStyle}>Subheadline</label>
+            <input style={inputStyle} value={c.subheadline || ''} onChange={(e) => update('subheadline', e.target.value)} placeholder="Your subheadline goes here" />
+          </div>
+          <div>
+            <label style={labelStyle}>Background Color</label>
+            <div className="flex items-center gap-2">
+              <input type="color" value={c.bgColor || '#4F7FFF'} onChange={(e) => update('bgColor', e.target.value)} className="w-9 h-9 rounded cursor-pointer" style={{ background: 'none', border: '1px solid #252B3B', padding: 2 }} />
+              <input style={{ ...inputStyle, flex: 1 }} value={c.bgColor || '#4F7FFF'} onChange={(e) => update('bgColor', e.target.value)} placeholder="#4F7FFF" />
+            </div>
+          </div>
+        </div>
+      );
+    case 'text':
+      return (
+        <div>
+          <label style={labelStyle}>Content</label>
+          <textarea
+            style={{ ...inputStyle, minHeight: 120, resize: 'vertical' }}
+            value={c.content || ''}
+            onChange={(e) => update('content', e.target.value)}
+            placeholder="Add your text here..."
+          />
+        </div>
+      );
+    case 'button':
+      return (
+        <div className="space-y-3">
+          <div>
+            <label style={labelStyle}>Button Label</label>
+            <input style={inputStyle} value={c.label || ''} onChange={(e) => update('label', e.target.value)} placeholder="Click Here" />
+          </div>
+          <div>
+            <label style={labelStyle}>URL</label>
+            <input style={inputStyle} value={c.url || ''} onChange={(e) => update('url', e.target.value)} placeholder="https://yoursite.com/offer" />
+          </div>
+          <div>
+            <label style={labelStyle}>Button Color</label>
+            <div className="flex items-center gap-2">
+              <input type="color" value={c.bgColor || '#4F7FFF'} onChange={(e) => update('bgColor', e.target.value)} className="w-9 h-9 rounded cursor-pointer" style={{ background: 'none', border: '1px solid #252B3B', padding: 2 }} />
+              <input style={{ ...inputStyle, flex: 1 }} value={c.bgColor || '#4F7FFF'} onChange={(e) => update('bgColor', e.target.value)} placeholder="#4F7FFF" />
+            </div>
+          </div>
+        </div>
+      );
+    case 'social':
+      return (
+        <div className="space-y-3">
+          <div>
+            <label style={labelStyle}>Twitter URL</label>
+            <input style={inputStyle} value={c.twitter || ''} onChange={(e) => update('twitter', e.target.value)} placeholder="https://twitter.com/yourhandle" />
+          </div>
+          <div>
+            <label style={labelStyle}>LinkedIn URL</label>
+            <input style={inputStyle} value={c.linkedin || ''} onChange={(e) => update('linkedin', e.target.value)} placeholder="https://linkedin.com/company/yourco" />
+          </div>
+          <div>
+            <label style={labelStyle}>Instagram URL</label>
+            <input style={inputStyle} value={c.instagram || ''} onChange={(e) => update('instagram', e.target.value)} placeholder="https://instagram.com/yourhandle" />
+          </div>
+        </div>
+      );
+    case 'footer':
+      return (
+        <div className="space-y-3">
+          <div>
+            <label style={labelStyle}>Company Name</label>
+            <input style={inputStyle} value={c.company || ''} onChange={(e) => update('company', e.target.value)} placeholder="Company Name" />
+          </div>
+          <div>
+            <label style={labelStyle}>Address</label>
+            <input style={inputStyle} value={c.address || ''} onChange={(e) => update('address', e.target.value)} placeholder="123 Main St, City, Country" />
+          </div>
+        </div>
+      );
+    case 'divider':
+      return <p style={{ color: '#8B92A5', fontSize: 13 }}>No editable content for dividers.</p>;
+    default:
+      return null;
+  }
+}
 
 // ─── Step indicator ───────────────────────────────────────────────────────────
 function StepIndicator({ step, currentStep }) {
@@ -136,10 +264,7 @@ function StepIndicator({ step, currentStep }) {
                   </svg>
                 ) : num}
               </div>
-              <span
-                className="text-sm font-medium"
-                style={{ color: isActive ? '#F1F3F9' : '#8B92A5' }}
-              >
+              <span className="text-sm font-medium" style={{ color: isActive ? '#F1F3F9' : '#8B92A5' }}>
                 {s}
               </span>
             </div>
@@ -219,7 +344,7 @@ function SetupStep({ form, setForm, segments }) {
         >
           <option value="">Select a segment…</option>
           {segments.map((seg) => (
-            <option key={seg._id} value={seg._id}>
+            <option key={seg.id || seg._id} value={seg.id || seg._id}>
               {seg.name} {seg.contactCount ? `(${seg.contactCount.toLocaleString()})` : ''}
             </option>
           ))}
@@ -231,12 +356,19 @@ function SetupStep({ form, setForm, segments }) {
 
 // ─── Step 2: Design ───────────────────────────────────────────────────────────
 function DesignStep({ blocks, setBlocks, device, setDevice }) {
+  const [selectedId, setSelectedId] = useState(null);
+
   const addBlock = (type) => {
     const blockDef = BLOCK_TYPES.find((b) => b.type === type);
-    setBlocks([...blocks, { id: Date.now(), type, label: blockDef.label }]);
+    const newBlock = { id: Date.now(), type, label: blockDef.label, content: { ...blockDef.defaultContent } };
+    setBlocks([...blocks, newBlock]);
+    setSelectedId(newBlock.id);
   };
 
-  const removeBlock = (id) => setBlocks(blocks.filter((b) => b.id !== id));
+  const removeBlock = (id) => {
+    setBlocks(blocks.filter((b) => b.id !== id));
+    if (selectedId === id) setSelectedId(null);
+  };
 
   const moveBlock = (id, dir) => {
     const idx = blocks.findIndex((b) => b.id === id);
@@ -248,11 +380,17 @@ function DesignStep({ blocks, setBlocks, device, setDevice }) {
     setBlocks(newBlocks);
   };
 
+  const updateBlock = (updated) => {
+    setBlocks(blocks.map((b) => (b.id === updated.id ? updated : b)));
+  };
+
+  const selectedBlock = blocks.find((b) => b.id === selectedId);
+
   return (
-    <div className="flex gap-5" style={{ height: 520 }}>
+    <div className="flex gap-4" style={{ height: 520 }}>
       {/* Block palette */}
       <div
-        className="w-48 flex-shrink-0 rounded-xl p-3 space-y-2 overflow-y-auto"
+        className="w-44 flex-shrink-0 rounded-xl p-3 space-y-2 overflow-y-auto"
         style={{ background: '#0F1117', border: '1px solid #252B3B' }}
       >
         <p className="text-xs font-semibold uppercase tracking-wider px-2 mb-3" style={{ color: '#8B92A5' }}>
@@ -283,7 +421,6 @@ function DesignStep({ blocks, setBlocks, device, setDevice }) {
 
       {/* Canvas */}
       <div className="flex-1 flex flex-col rounded-xl overflow-hidden" style={{ border: '1px solid #252B3B' }}>
-        {/* Device toggle */}
         <div
           className="flex items-center justify-between px-4 py-3 border-b"
           style={{ background: '#0F1117', borderColor: '#252B3B' }}
@@ -306,18 +443,10 @@ function DesignStep({ blocks, setBlocks, device, setDevice }) {
           </div>
         </div>
 
-        {/* Email preview area */}
-        <div
-          className="flex-1 overflow-y-auto p-4"
-          style={{ background: '#0F1117' }}
-        >
+        <div className="flex-1 overflow-y-auto p-4" style={{ background: '#0F1117' }}>
           <div
             className="mx-auto rounded-xl overflow-hidden transition-all duration-300"
-            style={{
-              maxWidth: device === 'Mobile' ? 375 : 600,
-              background: '#181C27',
-              border: '1px solid #252B3B',
-            }}
+            style={{ maxWidth: device === 'Mobile' ? 375 : 600, background: '#181C27', border: '1px solid #252B3B' }}
           >
             {blocks.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 gap-3">
@@ -326,84 +455,78 @@ function DesignStep({ blocks, setBlocks, device, setDevice }) {
                   <line x1="3" y1="9" x2="21" y2="9" />
                   <line x1="9" y1="21" x2="9" y2="9" />
                 </svg>
-                <p className="text-sm" style={{ color: '#252B3B' }}>
-                  Add blocks from the left panel
-                </p>
+                <p className="text-sm" style={{ color: '#252B3B' }}>Add blocks from the left panel</p>
               </div>
             ) : (
               <div className="divide-y" style={{ borderColor: '#252B3B' }}>
-                {blocks.map((block, idx) => {
-                  const blockDef = BLOCK_TYPES.find((b) => b.type === block.type);
-                  return (
+                {blocks.map((block, idx) => (
+                  <div
+                    key={block.id}
+                    className="group relative px-4 py-3 cursor-pointer transition-all"
+                    style={{
+                      background: selectedId === block.id ? '#1A2744' : 'transparent',
+                      outline: selectedId === block.id ? '2px solid #4F7FFF' : 'none',
+                      outlineOffset: -2,
+                    }}
+                    onClick={() => setSelectedId(selectedId === block.id ? null : block.id)}
+                    onMouseEnter={(e) => { if (selectedId !== block.id) e.currentTarget.style.background = '#1E2436'; }}
+                    onMouseLeave={(e) => { if (selectedId !== block.id) e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    <BlockPreview block={block} />
+
                     <div
-                      key={block.id}
-                      className="group relative px-4 py-3 transition-colors"
-                      onMouseEnter={(e) => (e.currentTarget.style.background = '#1E2436')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      className="absolute top-2 right-2 hidden group-hover:flex items-center gap-1 rounded-lg p-1"
+                      style={{ background: '#252B3B' }}
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      {/* Block preview */}
-                      {blockDef?.preview}
-
-                      {/* Block actions */}
-                      <div
-                        className="absolute top-2 right-2 hidden group-hover:flex items-center gap-1 rounded-lg p-1"
-                        style={{ background: '#252B3B' }}
-                      >
-                        <button
-                          onClick={() => moveBlock(block.id, -1)}
-                          disabled={idx === 0}
-                          className="p-1 rounded transition-colors disabled:opacity-30"
-                          style={{ color: '#8B92A5' }}
-                          onMouseEnter={(e) => (e.currentTarget.style.color = '#F1F3F9')}
-                          onMouseLeave={(e) => (e.currentTarget.style.color = '#8B92A5')}
-                          title="Move up"
-                        >
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-                            <polyline points="18 15 12 9 6 15" />
-                          </svg>
-                        </button>
-                        <button
-                          onClick={() => moveBlock(block.id, 1)}
-                          disabled={idx === blocks.length - 1}
-                          className="p-1 rounded transition-colors disabled:opacity-30"
-                          style={{ color: '#8B92A5' }}
-                          onMouseEnter={(e) => (e.currentTarget.style.color = '#F1F3F9')}
-                          onMouseLeave={(e) => (e.currentTarget.style.color = '#8B92A5')}
-                          title="Move down"
-                        >
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-                            <polyline points="6 9 12 15 18 9" />
-                          </svg>
-                        </button>
-                        <div className="w-px h-4 mx-0.5" style={{ background: '#1E2436' }} />
-                        <button
-                          onClick={() => removeBlock(block.id)}
-                          className="p-1 rounded transition-colors"
-                          style={{ color: '#8B92A5' }}
-                          onMouseEnter={(e) => (e.currentTarget.style.color = '#EF4444')}
-                          onMouseLeave={(e) => (e.currentTarget.style.color = '#8B92A5')}
-                          title="Delete block"
-                        >
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-                            <line x1="18" y1="6" x2="6" y2="18" />
-                            <line x1="6" y1="6" x2="18" y2="18" />
-                          </svg>
-                        </button>
-                      </div>
-
-                      {/* Block type label */}
-                      <div
-                        className="absolute bottom-2 left-2 hidden group-hover:block px-1.5 py-0.5 rounded text-xs"
-                        style={{ background: '#252B3B', color: '#8B92A5' }}
-                      >
-                        {block.label}
-                      </div>
+                      <button onClick={() => moveBlock(block.id, -1)} disabled={idx === 0} className="p-1 rounded transition-colors disabled:opacity-30" style={{ color: '#8B92A5' }} onMouseEnter={(e) => (e.currentTarget.style.color = '#F1F3F9')} onMouseLeave={(e) => (e.currentTarget.style.color = '#8B92A5')} title="Move up">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><polyline points="18 15 12 9 6 15" /></svg>
+                      </button>
+                      <button onClick={() => moveBlock(block.id, 1)} disabled={idx === blocks.length - 1} className="p-1 rounded transition-colors disabled:opacity-30" style={{ color: '#8B92A5' }} onMouseEnter={(e) => (e.currentTarget.style.color = '#F1F3F9')} onMouseLeave={(e) => (e.currentTarget.style.color = '#8B92A5')} title="Move down">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><polyline points="6 9 12 15 18 9" /></svg>
+                      </button>
+                      <div className="w-px h-4 mx-0.5" style={{ background: '#1E2436' }} />
+                      <button onClick={() => removeBlock(block.id)} className="p-1 rounded transition-colors" style={{ color: '#8B92A5' }} onMouseEnter={(e) => (e.currentTarget.style.color = '#EF4444')} onMouseLeave={(e) => (e.currentTarget.style.color = '#8B92A5')} title="Delete block">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                      </button>
                     </div>
-                  );
-                })}
+
+                    {selectedId !== block.id && (
+                      <div className="absolute bottom-2 left-2 hidden group-hover:block px-1.5 py-0.5 rounded text-xs" style={{ background: '#252B3B', color: '#8B92A5' }}>
+                        {block.label} — click to edit
+                      </div>
+                    )}
+                    {selectedId === block.id && (
+                      <div className="absolute bottom-2 left-2 px-1.5 py-0.5 rounded text-xs" style={{ background: '#4F7FFF', color: '#fff' }}>
+                        Editing
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Edit panel */}
+      <div
+        className="w-56 flex-shrink-0 rounded-xl overflow-y-auto"
+        style={{ background: '#0F1117', border: '1px solid #252B3B' }}
+      >
+        <div className="px-4 py-3 border-b" style={{ borderColor: '#252B3B' }}>
+          <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#8B92A5' }}>
+            {selectedBlock ? `Edit: ${selectedBlock.label}` : 'Properties'}
+          </p>
+        </div>
+        <div className="p-4">
+          {selectedBlock ? (
+            <BlockEditor block={selectedBlock} onChange={updateBlock} />
+          ) : (
+            <p className="text-xs" style={{ color: '#4B5563' }}>
+              Click a block on the canvas to edit its content.
+            </p>
+          )}
         </div>
       </div>
     </div>
@@ -412,7 +535,7 @@ function DesignStep({ blocks, setBlocks, device, setDevice }) {
 
 // ─── Step 3: Review ───────────────────────────────────────────────────────────
 function ReviewStep({ form, blocks, segments, onSend, onSchedule, sending, sent, scheduledAt, setScheduledAt }) {
-  const seg = segments.find((s) => s._id === form.segmentId);
+  const seg = segments.find((s) => (s.id || s._id) === form.segmentId);
 
   const checks = [
     { label: 'Campaign name set', ok: !!form.name },
@@ -428,11 +551,7 @@ function ReviewStep({ form, blocks, segments, onSend, onSchedule, sending, sent,
 
   return (
     <div className="grid grid-cols-2 gap-6">
-      {/* Summary */}
-      <div
-        className="rounded-xl p-5 space-y-4"
-        style={{ background: '#0F1117', border: '1px solid #252B3B' }}
-      >
+      <div className="rounded-xl p-5 space-y-4" style={{ background: '#0F1117', border: '1px solid #252B3B' }}>
         <h3 className="text-sm font-semibold" style={{ color: '#F1F3F9' }}>Campaign Summary</h3>
         {[
           { label: 'Name', value: form.name || '—' },
@@ -450,85 +569,47 @@ function ReviewStep({ form, blocks, segments, onSend, onSchedule, sending, sent,
         ))}
       </div>
 
-      {/* Checklist + Send */}
       <div className="space-y-5">
-        <div
-          className="rounded-xl p-5 space-y-3"
-          style={{ background: '#0F1117', border: '1px solid #252B3B' }}
-        >
+        <div className="rounded-xl p-5 space-y-3" style={{ background: '#0F1117', border: '1px solid #252B3B' }}>
           <h3 className="text-sm font-semibold" style={{ color: '#F1F3F9' }}>Pre-Send Checklist</h3>
           {checks.map((c) => (
             <div key={c.label} className="flex items-center gap-2.5">
-              <div
-                className="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0"
-                style={{ background: c.ok ? (c.auto ? '#1A2744' : '#052E16') : '#2D0E0E' }}
-              >
+              <div className="flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0" style={{ background: c.ok ? (c.auto ? '#1A2744' : '#052E16') : '#2D0E0E' }}>
                 {c.ok ? (
-                  <svg viewBox="0 0 24 24" fill="none" stroke={c.auto ? '#4F7FFF' : '#22C55E'} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
+                  <svg viewBox="0 0 24 24" fill="none" stroke={c.auto ? '#4F7FFF' : '#22C55E'} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3"><polyline points="20 6 9 17 4 12" /></svg>
                 ) : (
-                  <svg viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
-                    <line x1="18" y1="6" x2="6" y2="18" />
-                    <line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                 )}
               </div>
-              <span className="text-sm" style={{ color: c.ok ? '#F1F3F9' : '#EF4444' }}>
-                {c.label}
-              </span>
+              <span className="text-sm" style={{ color: c.ok ? '#F1F3F9' : '#EF4444' }}>{c.label}</span>
               {c.auto && (
-                <span
-                  className="px-1.5 py-0.5 rounded text-xs"
-                  style={{ background: '#1A2744', color: '#4F7FFF' }}
-                >
-                  auto
-                </span>
+                <span className="px-1.5 py-0.5 rounded text-xs" style={{ background: '#1A2744', color: '#4F7FFF' }}>auto</span>
               )}
             </div>
           ))}
         </div>
 
-        {/* Send actions */}
         {sent ? (
-          <div
-            className="rounded-xl p-5 flex flex-col items-center gap-2"
-            style={{ background: '#052E16', border: '1px solid #22C55E' }}
-          >
+          <div className="rounded-xl p-5 flex flex-col items-center gap-2" style={{ background: '#052E16', border: '1px solid #22C55E' }}>
             <svg viewBox="0 0 24 24" fill="none" stroke="#22C55E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8">
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-              <polyline points="22 4 12 14.01 9 11.01" />
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
             </svg>
             <p className="text-sm font-semibold" style={{ color: '#22C55E' }}>Campaign sent successfully!</p>
           </div>
         ) : (
-          <div
-            className="rounded-xl p-5 space-y-4"
-            style={{ background: '#0F1117', border: '1px solid #252B3B' }}
-          >
+          <div className="rounded-xl p-5 space-y-4" style={{ background: '#0F1117', border: '1px solid #252B3B' }}>
             <h3 className="text-sm font-semibold" style={{ color: '#F1F3F9' }}>Send Campaign</h3>
-
-            <Button
-              variant="primary"
-              size="md"
-              className="w-full"
-              onClick={onSend}
-              loading={sending}
-              disabled={!allReady || sending}
-            >
+            <Button variant="primary" size="md" className="w-full" onClick={onSend} loading={sending} disabled={!allReady || sending}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                <line x1="22" y1="2" x2="11" y2="13" />
-                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
               </svg>
               Send Now
             </Button>
-
             <div className="flex items-center gap-2">
               <div className="flex-1 h-px" style={{ background: '#252B3B' }} />
               <span className="text-xs" style={{ color: '#8B92A5' }}>or schedule</span>
               <div className="flex-1 h-px" style={{ background: '#252B3B' }} />
             </div>
-
             <div className="flex gap-2">
               <input
                 type="datetime-local"
@@ -539,21 +620,12 @@ function ReviewStep({ form, blocks, segments, onSend, onSchedule, sending, sent,
                 onFocus={(e) => (e.target.style.borderColor = '#4F7FFF')}
                 onBlur={(e) => (e.target.style.borderColor = '#252B3B')}
               />
-              <Button
-                variant="secondary"
-                size="md"
-                onClick={onSchedule}
-                disabled={!scheduledAt || !allReady || sending}
-                loading={sending}
-              >
+              <Button variant="secondary" size="md" onClick={onSchedule} disabled={!scheduledAt || !allReady || sending} loading={sending}>
                 Schedule
               </Button>
             </div>
-
             {!allReady && (
-              <p className="text-xs" style={{ color: '#EAB308' }}>
-                Complete all required fields before sending.
-              </p>
+              <p className="text-xs" style={{ color: '#EAB308' }}>Complete all required fields before sending.</p>
             )}
           </div>
         )}
@@ -591,19 +663,19 @@ export default function CampaignBuilder() {
   useEffect(() => {
     fetchSegments();
     if (id) {
-      // Load existing campaign
       client.get(`/campaigns/${id}`).then((res) => {
-        const c = res.data;
+        const c = res.data.campaign || res.data;
         setForm({
           name: c.name || '',
-          subject: c.subject || '',
-          previewText: c.previewText || '',
-          fromName: c.fromName || '',
-          fromEmail: c.fromEmail || '',
-          replyTo: c.replyTo || '',
-          segmentId: c.segmentId || '',
+          subject: c.subject_line || c.subject || '',
+          previewText: c.preview_text || c.previewText || '',
+          fromName: c.from_name || c.fromName || '',
+          fromEmail: c.from_email || c.fromEmail || '',
+          replyTo: c.reply_to || c.replyTo || '',
+          segmentId: c.segment_id || c.segmentId || '',
         });
-        if (c.blocks) setBlocks(c.blocks);
+        const loadedBlocks = c.template_blocks || c.blocks;
+        if (loadedBlocks) setBlocks(loadedBlocks);
       }).catch(() => {});
     }
   }, [id]);
@@ -617,7 +689,7 @@ export default function CampaignBuilder() {
         await updateCampaign(savedId, payload);
       } else {
         const campaign = await createCampaign(payload);
-        setSavedId(campaign._id);
+        setSavedId(campaign.id || campaign._id);
       }
     } catch (err) {
       setSaveError(err.response?.data?.message || 'Failed to save. Please try again.');
@@ -628,11 +700,12 @@ export default function CampaignBuilder() {
 
   const handleSend = async () => {
     setSending(true);
+    setSaveError('');
     try {
       let cid = savedId;
       if (!cid) {
         const campaign = await createCampaign({ ...form, blocks });
-        cid = campaign._id;
+        cid = campaign.id || campaign._id;
         setSavedId(cid);
       } else {
         await updateCampaign(cid, { ...form, blocks });
@@ -640,7 +713,7 @@ export default function CampaignBuilder() {
       await sendCampaign(cid);
       setSent(true);
     } catch (err) {
-      setSaveError(err.response?.data?.message || 'Failed to send. Please try again.');
+      setSaveError(err.response?.data?.message || err.response?.data?.error || 'Failed to send. Please try again.');
     } finally {
       setSending(false);
     }
@@ -649,11 +722,12 @@ export default function CampaignBuilder() {
   const handleSchedule = async () => {
     if (!scheduledAt) return;
     setSending(true);
+    setSaveError('');
     try {
       let cid = savedId;
       if (!cid) {
         const campaign = await createCampaign({ ...form, blocks });
-        cid = campaign._id;
+        cid = campaign.id || campaign._id;
         setSavedId(cid);
       } else {
         await updateCampaign(cid, { ...form, blocks });
@@ -675,7 +749,6 @@ export default function CampaignBuilder() {
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <button
@@ -686,100 +759,59 @@ export default function CampaignBuilder() {
             onMouseLeave={(e) => { e.currentTarget.style.color = '#8B92A5'; }}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-              <line x1="19" y1="12" x2="5" y2="12" />
-              <polyline points="12 19 5 12 12 5" />
+              <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
             </svg>
           </button>
           <div>
             <h2 className="text-2xl font-bold" style={{ color: '#F1F3F9' }}>
               {id ? 'Edit Campaign' : 'New Campaign'}
             </h2>
-            {form.name && (
-              <p className="text-sm mt-0.5" style={{ color: '#8B92A5' }}>{form.name}</p>
-            )}
+            {form.name && <p className="text-sm mt-0.5" style={{ color: '#8B92A5' }}>{form.name}</p>}
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <StepIndicator step={step} currentStep={step} />
-        </div>
+        <StepIndicator step={step} currentStep={step} />
       </div>
 
-      {/* Main card */}
-      <div
-        className="rounded-2xl p-6"
-        style={{ background: '#181C27', border: '1px solid #252B3B' }}
-      >
-        {/* Step content */}
-        {step === 1 && (
-          <SetupStep form={form} setForm={setForm} segments={segments} />
-        )}
-        {step === 2 && (
-          <DesignStep blocks={blocks} setBlocks={setBlocks} device={device} setDevice={setDevice} />
-        )}
+      <div className="rounded-2xl p-6" style={{ background: '#181C27', border: '1px solid #252B3B' }}>
+        {step === 1 && <SetupStep form={form} setForm={setForm} segments={segments} />}
+        {step === 2 && <DesignStep blocks={blocks} setBlocks={setBlocks} device={device} setDevice={setDevice} />}
         {step === 3 && (
           <ReviewStep
-            form={form}
-            blocks={blocks}
-            segments={segments}
-            onSend={handleSend}
-            onSchedule={handleSchedule}
-            sending={sending}
-            sent={sent}
-            scheduledAt={scheduledAt}
-            setScheduledAt={setScheduledAt}
+            form={form} blocks={blocks} segments={segments}
+            onSend={handleSend} onSchedule={handleSchedule}
+            sending={sending} sent={sent}
+            scheduledAt={scheduledAt} setScheduledAt={setScheduledAt}
           />
         )}
 
-        {/* Error */}
         {saveError && (
-          <div
-            className="mt-4 flex items-center gap-2 px-4 py-3 rounded-lg text-sm"
-            style={{ background: '#2D0E0E', border: '1px solid #EF4444', color: '#EF4444' }}
-          >
+          <div className="mt-4 flex items-center gap-2 px-4 py-3 rounded-lg text-sm" style={{ background: '#2D0E0E', border: '1px solid #EF4444', color: '#EF4444' }}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="8" x2="12" y2="12" />
-              <line x1="12" y1="16" x2="12.01" y2="16" />
+              <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
             </svg>
             {saveError}
           </div>
         )}
 
-        {/* Navigation */}
         <div className="flex items-center justify-between mt-6 pt-6 border-t" style={{ borderColor: '#252B3B' }}>
-          <Button
-            variant="secondary"
-            size="md"
-            onClick={() => step > 1 ? setStep(step - 1) : navigate('/campaigns')}
-          >
+          <Button variant="secondary" size="md" onClick={() => step > 1 ? setStep(step - 1) : navigate('/campaigns')}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-              <line x1="19" y1="12" x2="5" y2="12" />
-              <polyline points="12 19 5 12 12 5" />
+              <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
             </svg>
             {step === 1 ? 'Cancel' : 'Back'}
           </Button>
 
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="md" onClick={handleSave} loading={saving}>
-              Save Draft
-            </Button>
+            <Button variant="ghost" size="md" onClick={handleSave} loading={saving}>Save Draft</Button>
             {step < 3 ? (
-              <Button
-                variant="primary"
-                size="md"
-                onClick={() => setStep(step + 1)}
-                disabled={!canProceed[step]}
-              >
+              <Button variant="primary" size="md" onClick={() => setStep(step + 1)} disabled={!canProceed[step]}>
                 Continue
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                  <polyline points="12 5 19 12 12 19" />
+                  <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
                 </svg>
               </Button>
             ) : sent ? (
-              <Button variant="primary" size="md" onClick={() => navigate('/campaigns')}>
-                View Campaigns
-              </Button>
+              <Button variant="primary" size="md" onClick={() => navigate('/campaigns')}>View Campaigns</Button>
             ) : null}
           </div>
         </div>

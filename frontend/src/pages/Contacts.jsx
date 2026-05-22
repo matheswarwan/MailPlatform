@@ -28,6 +28,31 @@ function TagPill({ tag, onRemove }) {
   );
 }
 
+// Evaluate segment rules against a contact (mirrors backend buildSegmentQuery logic)
+function contactMatchesSegment(contact, segment) {
+  const rules = segment.rules || [];
+  if (rules.length === 0) return true; // "All Contacts" segment
+  return rules.every(({ field, operator, value }) => {
+    if (!field || !operator || value === undefined) return false;
+    if (field === 'tag') {
+      if (operator === 'contains' || operator === 'equals') return (contact.tags || []).includes(value);
+      if (operator === 'not_contains') return !(contact.tags || []).includes(value);
+    } else if (field === 'status') {
+      if (operator === 'equals') return contact.status === value;
+      if (operator === 'not_equals') return contact.status !== value;
+    } else if (field === 'email') {
+      if (operator === 'contains') return (contact.email || '').toLowerCase().includes(value.toLowerCase());
+      if (operator === 'equals') return contact.email === value;
+    } else if (field === 'created_at') {
+      if (operator === 'after') return new Date(contact.createdAt) > new Date(value);
+      if (operator === 'before') return new Date(contact.createdAt) < new Date(value);
+    } else if (field === 'source') {
+      if (operator === 'equals') return contact.source === value;
+    }
+    return false;
+  });
+}
+
 // Mock contacts for demo
 const MOCK_CONTACTS = [
   { _id: '1', email: 'alice@example.com', firstName: 'Alice', lastName: 'Chen', tags: ['vip', 'newsletter'], status: 'active', createdAt: '2024-01-15', lastActivity: '2025-05-20' },
@@ -43,7 +68,9 @@ const MOCK_CONTACTS = [
 const PAGE_SIZE = 10;
 
 export default function Contacts() {
-  const { contacts: storeContacts, contactsLoading, fetchContacts, addContact, deleteContact } = useAppStore();
+  const { contacts: storeContacts, contactsLoading, fetchContacts, addContact, deleteContact, segments, fetchSegments } = useAppStore();
+
+  useEffect(() => { fetchSegments(); }, []);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selected, setSelected] = useState([]);
@@ -55,7 +82,7 @@ export default function Contacts() {
   const [addError, setAddError] = useState('');
 
   useEffect(() => {
-    fetchContacts({ page, search, status: statusFilter !== 'all' ? statusFilter : undefined });
+    fetchContacts({ page, q: search, status: statusFilter !== 'all' ? statusFilter : undefined });
   }, [page, search, statusFilter]);
 
   const contacts = storeContacts.length > 0 ? storeContacts : MOCK_CONTACTS;
@@ -293,18 +320,23 @@ export default function Contacts() {
                       </td>
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-1 flex-wrap">
-                          {contact.tags?.length > 0 ? (
-                            contact.tags.slice(0, 2).map((tag) => (
-                              <TagPill key={tag} tag={tag} />
-                            ))
-                          ) : (
-                            <span className="text-xs" style={{ color: '#8B92A5' }}>—</span>
-                          )}
-                          {contact.tags?.length > 2 && (
-                            <span className="text-xs" style={{ color: '#8B92A5' }}>
-                              +{contact.tags.length - 2}
-                            </span>
-                          )}
+                          {(() => {
+                            const visibleTags = (contact.tags || []).filter((t) => !t.startsWith('seg:'));
+                            return visibleTags.length > 0 ? (
+                              <>
+                                {visibleTags.slice(0, 2).map((tag) => (
+                                  <TagPill key={tag} tag={tag} />
+                                ))}
+                                {visibleTags.length > 2 && (
+                                  <span className="text-xs" style={{ color: '#8B92A5' }}>
+                                    +{visibleTags.length - 2}
+                                  </span>
+                                )}
+                              </>
+                            ) : (
+                              <span className="text-xs" style={{ color: '#8B92A5' }}>—</span>
+                            );
+                          })()}
                         </div>
                       </td>
                       <td className="px-4 py-3.5">
@@ -335,48 +367,61 @@ export default function Contacts() {
                     </tr>
 
                     {/* Expanded row */}
-                    {expandedId === contact._id && (
-                      <tr style={{ background: '#1E2436', borderBottom: '1px solid #252B3B' }}>
-                        <td colSpan={9} className="px-6 py-5">
-                          <div className="grid grid-cols-4 gap-4">
-                            <div>
-                              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#8B92A5' }}>Contact Info</p>
-                              <div className="space-y-1.5">
-                                <p className="text-sm" style={{ color: '#F1F3F9' }}>{contact.email}</p>
-                                <p className="text-sm" style={{ color: '#8B92A5' }}>
-                                  {[contact.firstName, contact.lastName].filter(Boolean).join(' ') || '—'}
-                                </p>
+                    {expandedId === contact._id && (() => {
+                      const contactSegments = (segments || []).filter((seg) =>
+                        contactMatchesSegment(contact, seg)
+                      );
+                      const visibleTags = (contact.tags || []).filter((t) => !t.startsWith('seg:'));
+                      return (
+                        <tr style={{ background: '#1E2436', borderBottom: '1px solid #252B3B' }}>
+                          <td colSpan={9} className="px-6 py-5">
+                            <div className="grid grid-cols-4 gap-4">
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#8B92A5' }}>Contact Info</p>
+                                <div className="space-y-1.5">
+                                  <p className="text-sm" style={{ color: '#F1F3F9' }}>{contact.email}</p>
+                                  <p className="text-sm" style={{ color: '#8B92A5' }}>
+                                    {[contact.firstName, contact.lastName].filter(Boolean).join(' ') || '—'}
+                                  </p>
+                                </div>
+                              </div>
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#8B92A5' }}>Tags</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {visibleTags.length > 0 ? (
+                                    visibleTags.map((tag) => <TagPill key={tag} tag={tag} />)
+                                  ) : (
+                                    <span className="text-sm" style={{ color: '#8B92A5' }}>No tags</span>
+                                  )}
+                                </div>
+                              </div>
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#8B92A5' }}>Segments</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {contactSegments.length > 0 ? contactSegments.map((seg) => (
+                                    <span key={seg.id || seg._id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium" style={{ background: '#1E2436', border: `1px solid ${seg.color || '#4F7FFF'}`, color: seg.color || '#4F7FFF' }}>
+                                      <span className="w-1.5 h-1.5 rounded-full" style={{ background: seg.color || '#4F7FFF' }} />
+                                      {seg.name}
+                                    </span>
+                                  )) : (
+                                    <span className="text-sm" style={{ color: '#8B92A5' }}>None</span>
+                                  )}
+                                </div>
+                              </div>
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#8B92A5' }}>Status & Activity</p>
+                                <div className="space-y-2">
+                                  <Badge status={contact.status || 'active'} />
+                                  <p className="text-xs" style={{ color: '#8B92A5' }}>
+                                    Added: <span style={{ color: '#F1F3F9' }}>{formatDate(contact.createdAt)}</span>
+                                  </p>
+                                </div>
                               </div>
                             </div>
-                            <div>
-                              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#8B92A5' }}>All Tags</p>
-                              <div className="flex flex-wrap gap-1.5">
-                                {contact.tags?.length > 0 ? (
-                                  contact.tags.map((tag) => <TagPill key={tag} tag={tag} />)
-                                ) : (
-                                  <span className="text-sm" style={{ color: '#8B92A5' }}>No tags</span>
-                                )}
-                              </div>
-                            </div>
-                            <div>
-                              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#8B92A5' }}>Status</p>
-                              <Badge status={contact.status || 'active'} />
-                            </div>
-                            <div>
-                              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#8B92A5' }}>Activity</p>
-                              <div className="space-y-1.5">
-                                <p className="text-xs" style={{ color: '#8B92A5' }}>
-                                  Added: <span style={{ color: '#F1F3F9' }}>{formatDate(contact.createdAt)}</span>
-                                </p>
-                                <p className="text-xs" style={{ color: '#8B92A5' }}>
-                                  Last seen: <span style={{ color: '#F1F3F9' }}>{formatDate(contact.lastActivity)}</span>
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
+                          </td>
+                        </tr>
+                      );
+                    })()}
                   </React.Fragment>
                 ))}
               </tbody>
