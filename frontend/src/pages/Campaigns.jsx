@@ -39,20 +39,21 @@ export default function Campaigns() {
 
   const sent = campaigns.filter((c) => c.status === 'sent');
   const thisMonth = sent.filter((c) => {
-    if (!c.sentAt) return false;
-    const d = new Date(c.sentAt);
+    const ts = c.sent_at || c.sentAt;
+    if (!ts) return false;
+    const d = new Date(ts);
     const now = new Date();
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
   });
 
   const avgOpenRate =
     sent.length > 0
-      ? sent.reduce((sum, c) => sum + (c.stats?.openRate || 0), 0) / sent.length
+      ? sent.reduce((sum, c) => sum + (c.open_rate || c.stats?.openRate || 0), 0) / sent.length
       : null;
 
   const avgClickRate =
     sent.length > 0
-      ? sent.reduce((sum, c) => sum + (c.stats?.clickRate || 0), 0) / sent.length
+      ? sent.reduce((sum, c) => sum + (c.click_rate || c.stats?.clickRate || 0), 0) / sent.length
       : null;
 
   const handleDelete = async (id) => {

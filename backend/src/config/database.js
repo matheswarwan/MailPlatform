@@ -40,5 +40,17 @@ export async function runMigrations() {
     console.log('Migration 002_contact_attributes.sql skipped (already applied)');
   }
 
+  try {
+    const migration003 = join(__dirname, '../../migrations/003_assets.sql');
+    const sql003 = await readFile(migration003, 'utf8');
+    await pool.query(sql003);
+    console.log('Migration 003_assets.sql complete');
+  } catch (err) {
+    if (err.code !== '42701' && err.code !== '42P07') {
+      throw err;
+    }
+    console.log('Migration 003_assets.sql skipped (already applied)');
+  }
+
   console.log('All migrations complete');
 }

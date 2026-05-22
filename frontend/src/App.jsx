@@ -12,6 +12,9 @@ import Analytics from './pages/Analytics';
 import Contacts from './pages/Contacts';
 import PreferenceCentre from './pages/PreferenceCentre';
 import PreferencePage from './pages/PreferencePage';
+import Admin from './pages/Admin';
+import Assets from './pages/Assets';
+import EmailTemplateBuilder from './pages/EmailTemplateBuilder';
 
 function ProtectedLayout() {
   const token = useAuthStore((s) => s.token);
@@ -45,6 +48,10 @@ export default function App() {
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/contacts" element={<Contacts />} />
         <Route path="/preference-centre" element={<PreferenceCentre />} />
+        <Route path="/admin" element={<Admin />} />
+        <Route path="/assets" element={<Assets />} />
+        <Route path="/assets/emails/new" element={<EmailTemplateBuilder />} />
+        <Route path="/assets/emails/:id/edit" element={<EmailTemplateBuilder />} />
       </Route>
     </Routes>
   );

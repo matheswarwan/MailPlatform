@@ -3,241 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import useAppStore from '../../store/appStore';
 import Button from '../ui/Button';
 import client from '../../api/client';
-
-// ─── Block definitions ────────────────────────────────────────────────────────
-const BLOCK_TYPES = [
-  {
-    type: 'hero',
-    label: 'Hero Banner',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-        <rect x="3" y="3" width="18" height="18" rx="2" />
-        <path d="M3 9h18" />
-      </svg>
-    ),
-    defaultContent: { headline: 'Hero Headline', subheadline: 'Your subheadline goes here', bgColor: '#4F7FFF' },
-  },
-  {
-    type: 'text',
-    label: 'Text Block',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-        <line x1="17" y1="10" x2="3" y2="10" />
-        <line x1="21" y1="6" x2="3" y2="6" />
-        <line x1="21" y1="14" x2="3" y2="14" />
-        <line x1="14" y1="18" x2="3" y2="18" />
-      </svg>
-    ),
-    defaultContent: { content: 'Add your text here. You can write a message to your audience.' },
-  },
-  {
-    type: 'button',
-    label: 'CTA Button',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-        <rect x="3" y="8" width="18" height="8" rx="4" />
-      </svg>
-    ),
-    defaultContent: { label: 'Click Here', url: '', bgColor: '#4F7FFF' },
-  },
-  {
-    type: 'divider',
-    label: 'Divider',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-        <line x1="3" y1="12" x2="21" y2="12" />
-      </svg>
-    ),
-    defaultContent: {},
-  },
-  {
-    type: 'social',
-    label: 'Social Links',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-        <circle cx="18" cy="5" r="3" />
-        <circle cx="6" cy="12" r="3" />
-        <circle cx="18" cy="19" r="3" />
-        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-      </svg>
-    ),
-    defaultContent: { twitter: '', linkedin: '', instagram: '' },
-  },
-  {
-    type: 'footer',
-    label: 'Footer',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-        <rect x="3" y="3" width="18" height="18" rx="2" />
-        <path d="M3 15h18" />
-      </svg>
-    ),
-    defaultContent: { company: 'Company Name', address: '123 Main St, City, Country' },
-  },
-];
-
-// ─── Block preview renderer ───────────────────────────────────────────────────
-function BlockPreview({ block }) {
-  const c = block.content || {};
-  switch (block.type) {
-    case 'hero':
-      return (
-        <div className="rounded-lg py-8 px-4 text-center" style={{ background: c.bgColor || '#4F7FFF' }}>
-          <p className="text-white font-bold text-lg">{c.headline || 'Hero Headline'}</p>
-          <p className="text-blue-200 text-sm mt-1">{c.subheadline || 'Your subheadline goes here'}</p>
-        </div>
-      );
-    case 'text':
-      return (
-        <div className="py-3 px-2 text-sm whitespace-pre-wrap" style={{ color: '#F1F3F9' }}>
-          {c.content || 'Add your text here.'}
-        </div>
-      );
-    case 'button':
-      return (
-        <div className="flex justify-center py-3">
-          <div className="px-6 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: c.bgColor || '#4F7FFF' }}>
-            {c.label || 'Click Here'}
-          </div>
-        </div>
-      );
-    case 'divider':
-      return (
-        <div className="py-3">
-          <div className="h-px w-full" style={{ background: '#252B3B' }} />
-        </div>
-      );
-    case 'social':
-      return (
-        <div className="flex justify-center gap-3 py-3">
-          {['T', 'Li', 'Ig'].map((s) => (
-            <div key={s} className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: '#252B3B', color: '#8B92A5' }}>
-              {s}
-            </div>
-          ))}
-        </div>
-      );
-    case 'footer':
-      return (
-        <div className="py-4 text-center" style={{ background: '#0F1117', borderRadius: 8 }}>
-          <p className="text-xs" style={{ color: '#8B92A5' }}>{c.company || 'Company Name'} | Unsubscribe | Preferences</p>
-          <p className="text-xs mt-1" style={{ color: '#4B5563' }}>{c.address || '123 Main St, City, Country'}</p>
-        </div>
-      );
-    default:
-      return null;
-  }
-}
-
-// ─── Block editor panel ───────────────────────────────────────────────────────
-function BlockEditor({ block, onChange }) {
-  const c = block.content || {};
-
-  const update = (key, value) => onChange({ ...block, content: { ...c, [key]: value } });
-
-  const inputStyle = {
-    background: '#0F1117',
-    border: '1px solid #252B3B',
-    color: '#F1F3F9',
-    borderRadius: 8,
-    padding: '8px 12px',
-    fontSize: 13,
-    width: '100%',
-    outline: 'none',
-  };
-
-  const labelStyle = { color: '#8B92A5', fontSize: 12, marginBottom: 4, display: 'block' };
-
-  switch (block.type) {
-    case 'hero':
-      return (
-        <div className="space-y-3">
-          <div>
-            <label style={labelStyle}>Headline</label>
-            <input style={inputStyle} value={c.headline || ''} onChange={(e) => update('headline', e.target.value)} placeholder="Hero Headline" />
-          </div>
-          <div>
-            <label style={labelStyle}>Subheadline</label>
-            <input style={inputStyle} value={c.subheadline || ''} onChange={(e) => update('subheadline', e.target.value)} placeholder="Your subheadline goes here" />
-          </div>
-          <div>
-            <label style={labelStyle}>Background Color</label>
-            <div className="flex items-center gap-2">
-              <input type="color" value={c.bgColor || '#4F7FFF'} onChange={(e) => update('bgColor', e.target.value)} className="w-9 h-9 rounded cursor-pointer" style={{ background: 'none', border: '1px solid #252B3B', padding: 2 }} />
-              <input style={{ ...inputStyle, flex: 1 }} value={c.bgColor || '#4F7FFF'} onChange={(e) => update('bgColor', e.target.value)} placeholder="#4F7FFF" />
-            </div>
-          </div>
-        </div>
-      );
-    case 'text':
-      return (
-        <div>
-          <label style={labelStyle}>Content</label>
-          <textarea
-            style={{ ...inputStyle, minHeight: 120, resize: 'vertical' }}
-            value={c.content || ''}
-            onChange={(e) => update('content', e.target.value)}
-            placeholder="Add your text here..."
-          />
-        </div>
-      );
-    case 'button':
-      return (
-        <div className="space-y-3">
-          <div>
-            <label style={labelStyle}>Button Label</label>
-            <input style={inputStyle} value={c.label || ''} onChange={(e) => update('label', e.target.value)} placeholder="Click Here" />
-          </div>
-          <div>
-            <label style={labelStyle}>URL</label>
-            <input style={inputStyle} value={c.url || ''} onChange={(e) => update('url', e.target.value)} placeholder="https://yoursite.com/offer" />
-          </div>
-          <div>
-            <label style={labelStyle}>Button Color</label>
-            <div className="flex items-center gap-2">
-              <input type="color" value={c.bgColor || '#4F7FFF'} onChange={(e) => update('bgColor', e.target.value)} className="w-9 h-9 rounded cursor-pointer" style={{ background: 'none', border: '1px solid #252B3B', padding: 2 }} />
-              <input style={{ ...inputStyle, flex: 1 }} value={c.bgColor || '#4F7FFF'} onChange={(e) => update('bgColor', e.target.value)} placeholder="#4F7FFF" />
-            </div>
-          </div>
-        </div>
-      );
-    case 'social':
-      return (
-        <div className="space-y-3">
-          <div>
-            <label style={labelStyle}>Twitter URL</label>
-            <input style={inputStyle} value={c.twitter || ''} onChange={(e) => update('twitter', e.target.value)} placeholder="https://twitter.com/yourhandle" />
-          </div>
-          <div>
-            <label style={labelStyle}>LinkedIn URL</label>
-            <input style={inputStyle} value={c.linkedin || ''} onChange={(e) => update('linkedin', e.target.value)} placeholder="https://linkedin.com/company/yourco" />
-          </div>
-          <div>
-            <label style={labelStyle}>Instagram URL</label>
-            <input style={inputStyle} value={c.instagram || ''} onChange={(e) => update('instagram', e.target.value)} placeholder="https://instagram.com/yourhandle" />
-          </div>
-        </div>
-      );
-    case 'footer':
-      return (
-        <div className="space-y-3">
-          <div>
-            <label style={labelStyle}>Company Name</label>
-            <input style={inputStyle} value={c.company || ''} onChange={(e) => update('company', e.target.value)} placeholder="Company Name" />
-          </div>
-          <div>
-            <label style={labelStyle}>Address</label>
-            <input style={inputStyle} value={c.address || ''} onChange={(e) => update('address', e.target.value)} placeholder="123 Main St, City, Country" />
-          </div>
-        </div>
-      );
-    case 'divider':
-      return <p style={{ color: '#8B92A5', fontSize: 13 }}>No editable content for dividers.</p>;
-    default:
-      return null;
-  }
-}
+import BlockCanvas from '../email/BlockCanvas';
 
 // ─── Step indicator ───────────────────────────────────────────────────────────
 function StepIndicator({ step, currentStep }) {
@@ -306,252 +72,146 @@ function Input({ value, onChange, placeholder, type = 'text' }) {
 }
 
 // ─── Step 1: Setup ────────────────────────────────────────────────────────────
-function SetupStep({ form, setForm, segments, verifiedEmails, verifiedDomains }) {
+function SetupStep({ form, setForm, segments, verifiedEmails, verifiedDomains, emailTemplates, onLoadTemplate }) {
+  const [templateSectionOpen, setTemplateSectionOpen] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
+
+  const handleLoadTemplate = () => {
+    if (!selectedTemplateId) return;
+    const tpl = emailTemplates.find((t) => t.id === selectedTemplateId);
+    if (tpl) onLoadTemplate(tpl);
+  };
+
   return (
-    <div className="grid grid-cols-2 gap-5">
-      <div className="col-span-2">
-        <Field label="Campaign Name" required>
-          <Input value={form.name} onChange={(v) => setForm({ ...form, name: v })} placeholder="e.g. Summer Sale 2025" />
-        </Field>
+    <div className="space-y-5">
+      {/* Start from template (collapsible) */}
+      <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #252B3B' }}>
+        <button
+          onClick={() => setTemplateSectionOpen(!templateSectionOpen)}
+          className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium transition-colors"
+          style={{ background: '#0F1117', color: '#8B92A5' }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = '#F1F3F9'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = '#8B92A5'; }}
+        >
+          <div className="flex items-center gap-2">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4" style={{ color: '#4F7FFF' }}>
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
+            </svg>
+            Start from an email template <span className="px-1.5 py-0.5 rounded text-xs ml-1" style={{ background: '#1A2744', color: '#4F7FFF' }}>optional</span>
+          </div>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 transition-transform" style={{ transform: templateSectionOpen ? 'rotate(180deg)' : 'none' }}>
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
+        {templateSectionOpen && (
+          <div className="px-4 py-4" style={{ background: '#181C27', borderTop: '1px solid #252B3B' }}>
+            {emailTemplates.length === 0 ? (
+              <p className="text-sm" style={{ color: '#4A5060' }}>No email templates saved yet. Create one in Assets &rarr; Emails.</p>
+            ) : (
+              <div className="flex items-center gap-3">
+                <select
+                  value={selectedTemplateId}
+                  onChange={(e) => setSelectedTemplateId(e.target.value)}
+                  className="flex-1 px-4 py-2.5 rounded-lg text-sm outline-none transition-all"
+                  style={{ background: '#0F1117', border: '1px solid #252B3B', color: selectedTemplateId ? '#F1F3F9' : '#8B92A5' }}
+                  onFocus={(e) => (e.target.style.borderColor = '#4F7FFF')}
+                  onBlur={(e) => (e.target.style.borderColor = '#252B3B')}
+                >
+                  <option value="">Select a template…</option>
+                  {emailTemplates.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleLoadTemplate}
+                  disabled={!selectedTemplateId}
+                  className="px-4 py-2.5 rounded-lg text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{ background: '#4F7FFF', color: '#fff' }}
+                  onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.background = '#3B6EEE'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = '#4F7FFF'; }}
+                >
+                  Load Template
+                </button>
+              </div>
+            )}
+            {selectedTemplateId && (
+              <p className="mt-2 text-xs" style={{ color: '#EAB308' }}>
+                Loading a template will replace any blocks you have already added in the Design step.
+              </p>
+            )}
+          </div>
+        )}
       </div>
-      <div className="col-span-2">
-        <Field label="Subject Line" required>
-          <Input value={form.subject} onChange={(v) => setForm({ ...form, subject: v })} placeholder="e.g. Don't miss our biggest sale of the year" />
+
+      <div className="grid grid-cols-2 gap-5">
+        <div className="col-span-2">
+          <Field label="Campaign Name" required>
+            <Input value={form.name} onChange={(v) => setForm({ ...form, name: v })} placeholder="e.g. Summer Sale 2025" />
+          </Field>
+        </div>
+        <div className="col-span-2">
+          <Field label="Subject Line" required>
+            <Input value={form.subject} onChange={(v) => setForm({ ...form, subject: v })} placeholder="e.g. Hey {{first_name}}, don't miss our biggest sale!" />
+            <p className="mt-1 text-xs" style={{ color: '#4A5060' }}>
+              Tip: use <code style={{ color: '#4F7FFF' }}>{'{{first_name}}'}</code> or any variable — personalisation tokens work in the subject line too.
+            </p>
+          </Field>
+        </div>
+        <div className="col-span-2">
+          <Field label="Preview Text">
+            <Input value={form.previewText} onChange={(v) => setForm({ ...form, previewText: v })} placeholder="e.g. Up to 50% off — this weekend only" />
+          </Field>
+        </div>
+        <Field label="From Name" required>
+          <Input value={form.fromName} onChange={(v) => setForm({ ...form, fromName: v })} placeholder="e.g. Acme Team" />
         </Field>
-      </div>
-      <div className="col-span-2">
-        <Field label="Preview Text">
-          <Input value={form.previewText} onChange={(v) => setForm({ ...form, previewText: v })} placeholder="e.g. Up to 50% off — this weekend only" />
+        <Field label="From Email" required>
+          {verifiedEmails.length > 0 ? (
+            <select
+              value={form.fromEmail}
+              onChange={(e) => setForm({ ...form, fromEmail: e.target.value })}
+              className="w-full px-4 py-2.5 rounded-lg text-sm outline-none transition-all"
+              style={{ background: '#0F1117', border: '1px solid #252B3B', color: form.fromEmail ? '#F1F3F9' : '#8B92A5' }}
+              onFocus={(e) => (e.target.style.borderColor = '#4F7FFF')}
+              onBlur={(e) => (e.target.style.borderColor = '#252B3B')}
+            >
+              <option value="">Select a verified sender…</option>
+              {verifiedEmails.map((email) => (
+                <option key={email} value={email}>{email}</option>
+              ))}
+              {verifiedDomains.map((domain) => (
+                <option key={`domain:${domain}`} value={`sender@${domain}`}>sender@{domain} (any address on {domain})</option>
+              ))}
+            </select>
+          ) : (
+            <>
+              <Input value={form.fromEmail} onChange={(v) => setForm({ ...form, fromEmail: v })} placeholder="e.g. hello@acme.com" type="email" />
+              <p className="mt-1 text-xs" style={{ color: '#EAB308' }}>
+                No verified SES identities found. Verify an email or domain in the AWS SES console before sending.
+              </p>
+            </>
+          )}
         </Field>
-      </div>
-      <Field label="From Name" required>
-        <Input value={form.fromName} onChange={(v) => setForm({ ...form, fromName: v })} placeholder="e.g. Acme Team" />
-      </Field>
-      <Field label="From Email" required>
-        {verifiedEmails.length > 0 ? (
+        <Field label="Reply-To Email">
+          <Input value={form.replyTo} onChange={(v) => setForm({ ...form, replyTo: v })} placeholder="e.g. support@acme.com" type="email" />
+        </Field>
+        <Field label="Audience Segment" required>
           <select
-            value={form.fromEmail}
-            onChange={(e) => setForm({ ...form, fromEmail: e.target.value })}
+            value={form.segmentId}
+            onChange={(e) => setForm({ ...form, segmentId: e.target.value })}
             className="w-full px-4 py-2.5 rounded-lg text-sm outline-none transition-all"
-            style={{ background: '#0F1117', border: '1px solid #252B3B', color: form.fromEmail ? '#F1F3F9' : '#8B92A5' }}
+            style={{ background: '#0F1117', border: '1px solid #252B3B', color: form.segmentId ? '#F1F3F9' : '#8B92A5' }}
             onFocus={(e) => (e.target.style.borderColor = '#4F7FFF')}
             onBlur={(e) => (e.target.style.borderColor = '#252B3B')}
           >
-            <option value="">Select a verified sender…</option>
-            {verifiedEmails.map((email) => (
-              <option key={email} value={email}>{email}</option>
-            ))}
-            {verifiedDomains.map((domain) => (
-              <option key={`domain:${domain}`} value={`sender@${domain}`}>sender@{domain} (any address on {domain})</option>
+            <option value="">Select a segment…</option>
+            {segments.map((seg) => (
+              <option key={seg.id || seg._id} value={seg.id || seg._id}>
+                {seg.name} {seg.contactCount ? `(${seg.contactCount.toLocaleString()})` : ''}
+              </option>
             ))}
           </select>
-        ) : (
-          <>
-            <Input value={form.fromEmail} onChange={(v) => setForm({ ...form, fromEmail: v })} placeholder="e.g. hello@acme.com" type="email" />
-            <p className="mt-1 text-xs" style={{ color: '#EAB308' }}>
-              No verified SES identities found. Verify an email or domain in the AWS SES console before sending.
-            </p>
-          </>
-        )}
-      </Field>
-      <Field label="Reply-To Email">
-        <Input value={form.replyTo} onChange={(v) => setForm({ ...form, replyTo: v })} placeholder="e.g. support@acme.com" type="email" />
-      </Field>
-      <Field label="Audience Segment" required>
-        <select
-          value={form.segmentId}
-          onChange={(e) => setForm({ ...form, segmentId: e.target.value })}
-          className="w-full px-4 py-2.5 rounded-lg text-sm outline-none transition-all"
-          style={{ background: '#0F1117', border: '1px solid #252B3B', color: form.segmentId ? '#F1F3F9' : '#8B92A5' }}
-          onFocus={(e) => (e.target.style.borderColor = '#4F7FFF')}
-          onBlur={(e) => (e.target.style.borderColor = '#252B3B')}
-        >
-          <option value="">Select a segment…</option>
-          {segments.map((seg) => (
-            <option key={seg.id || seg._id} value={seg.id || seg._id}>
-              {seg.name} {seg.contactCount ? `(${seg.contactCount.toLocaleString()})` : ''}
-            </option>
-          ))}
-        </select>
-      </Field>
-    </div>
-  );
-}
-
-// ─── Step 2: Design ───────────────────────────────────────────────────────────
-function DesignStep({ blocks, setBlocks, device, setDevice }) {
-  const [selectedId, setSelectedId] = useState(null);
-
-  const addBlock = (type) => {
-    const blockDef = BLOCK_TYPES.find((b) => b.type === type);
-    const newBlock = { id: Date.now(), type, label: blockDef.label, content: { ...blockDef.defaultContent } };
-    setBlocks([...blocks, newBlock]);
-    setSelectedId(newBlock.id);
-  };
-
-  const removeBlock = (id) => {
-    setBlocks(blocks.filter((b) => b.id !== id));
-    if (selectedId === id) setSelectedId(null);
-  };
-
-  const moveBlock = (id, dir) => {
-    const idx = blocks.findIndex((b) => b.id === id);
-    if ((dir === -1 && idx === 0) || (dir === 1 && idx === blocks.length - 1)) return;
-    const newBlocks = [...blocks];
-    const temp = newBlocks[idx + dir];
-    newBlocks[idx + dir] = newBlocks[idx];
-    newBlocks[idx] = temp;
-    setBlocks(newBlocks);
-  };
-
-  const updateBlock = (updated) => {
-    setBlocks(blocks.map((b) => (b.id === updated.id ? updated : b)));
-  };
-
-  const selectedBlock = blocks.find((b) => b.id === selectedId);
-
-  return (
-    <div className="flex gap-4" style={{ height: 520 }}>
-      {/* Block palette */}
-      <div
-        className="w-44 flex-shrink-0 rounded-xl p-3 space-y-2 overflow-y-auto"
-        style={{ background: '#0F1117', border: '1px solid #252B3B' }}
-      >
-        <p className="text-xs font-semibold uppercase tracking-wider px-2 mb-3" style={{ color: '#8B92A5' }}>
-          Blocks
-        </p>
-        {BLOCK_TYPES.map((b) => (
-          <button
-            key={b.type}
-            onClick={() => addBlock(b.type)}
-            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-left"
-            style={{ color: '#8B92A5', border: '1px solid transparent' }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#181C27';
-              e.currentTarget.style.borderColor = '#4F7FFF';
-              e.currentTarget.style.color = '#F1F3F9';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent';
-              e.currentTarget.style.borderColor = 'transparent';
-              e.currentTarget.style.color = '#8B92A5';
-            }}
-          >
-            <span style={{ color: '#4F7FFF' }}>{b.icon}</span>
-            {b.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Canvas */}
-      <div className="flex-1 flex flex-col rounded-xl overflow-hidden" style={{ border: '1px solid #252B3B' }}>
-        <div
-          className="flex items-center justify-between px-4 py-3 border-b"
-          style={{ background: '#0F1117', borderColor: '#252B3B' }}
-        >
-          <p className="text-sm font-medium" style={{ color: '#8B92A5' }}>Email Canvas</p>
-          <div className="flex items-center gap-1 p-1 rounded-lg" style={{ background: '#181C27' }}>
-            {['Desktop', 'Mobile'].map((d) => (
-              <button
-                key={d}
-                onClick={() => setDevice(d)}
-                className="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
-                style={{
-                  background: device === d ? '#4F7FFF' : 'transparent',
-                  color: device === d ? '#fff' : '#8B92A5',
-                }}
-              >
-                {d}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-4" style={{ background: '#0F1117' }}>
-          <div
-            className="mx-auto rounded-xl overflow-hidden transition-all duration-300"
-            style={{ maxWidth: device === 'Mobile' ? 375 : 600, background: '#181C27', border: '1px solid #252B3B' }}
-          >
-            {blocks.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 gap-3">
-                <svg viewBox="0 0 24 24" fill="none" stroke="#252B3B" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-12 h-12">
-                  <rect x="3" y="3" width="18" height="18" rx="2" />
-                  <line x1="3" y1="9" x2="21" y2="9" />
-                  <line x1="9" y1="21" x2="9" y2="9" />
-                </svg>
-                <p className="text-sm" style={{ color: '#252B3B' }}>Add blocks from the left panel</p>
-              </div>
-            ) : (
-              <div className="divide-y" style={{ borderColor: '#252B3B' }}>
-                {blocks.map((block, idx) => (
-                  <div
-                    key={block.id}
-                    className="group relative px-4 py-3 cursor-pointer transition-all"
-                    style={{
-                      background: selectedId === block.id ? '#1A2744' : 'transparent',
-                      outline: selectedId === block.id ? '2px solid #4F7FFF' : 'none',
-                      outlineOffset: -2,
-                    }}
-                    onClick={() => setSelectedId(selectedId === block.id ? null : block.id)}
-                    onMouseEnter={(e) => { if (selectedId !== block.id) e.currentTarget.style.background = '#1E2436'; }}
-                    onMouseLeave={(e) => { if (selectedId !== block.id) e.currentTarget.style.background = 'transparent'; }}
-                  >
-                    <BlockPreview block={block} />
-
-                    <div
-                      className="absolute top-2 right-2 hidden group-hover:flex items-center gap-1 rounded-lg p-1"
-                      style={{ background: '#252B3B' }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <button onClick={() => moveBlock(block.id, -1)} disabled={idx === 0} className="p-1 rounded transition-colors disabled:opacity-30" style={{ color: '#8B92A5' }} onMouseEnter={(e) => (e.currentTarget.style.color = '#F1F3F9')} onMouseLeave={(e) => (e.currentTarget.style.color = '#8B92A5')} title="Move up">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><polyline points="18 15 12 9 6 15" /></svg>
-                      </button>
-                      <button onClick={() => moveBlock(block.id, 1)} disabled={idx === blocks.length - 1} className="p-1 rounded transition-colors disabled:opacity-30" style={{ color: '#8B92A5' }} onMouseEnter={(e) => (e.currentTarget.style.color = '#F1F3F9')} onMouseLeave={(e) => (e.currentTarget.style.color = '#8B92A5')} title="Move down">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><polyline points="6 9 12 15 18 9" /></svg>
-                      </button>
-                      <div className="w-px h-4 mx-0.5" style={{ background: '#1E2436' }} />
-                      <button onClick={() => removeBlock(block.id)} className="p-1 rounded transition-colors" style={{ color: '#8B92A5' }} onMouseEnter={(e) => (e.currentTarget.style.color = '#EF4444')} onMouseLeave={(e) => (e.currentTarget.style.color = '#8B92A5')} title="Delete block">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-                      </button>
-                    </div>
-
-                    {selectedId !== block.id && (
-                      <div className="absolute bottom-2 left-2 hidden group-hover:block px-1.5 py-0.5 rounded text-xs" style={{ background: '#252B3B', color: '#8B92A5' }}>
-                        {block.label} — click to edit
-                      </div>
-                    )}
-                    {selectedId === block.id && (
-                      <div className="absolute bottom-2 left-2 px-1.5 py-0.5 rounded text-xs" style={{ background: '#4F7FFF', color: '#fff' }}>
-                        Editing
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Edit panel */}
-      <div
-        className="w-56 flex-shrink-0 rounded-xl overflow-y-auto"
-        style={{ background: '#0F1117', border: '1px solid #252B3B' }}
-      >
-        <div className="px-4 py-3 border-b" style={{ borderColor: '#252B3B' }}>
-          <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#8B92A5' }}>
-            {selectedBlock ? `Edit: ${selectedBlock.label}` : 'Properties'}
-          </p>
-        </div>
-        <div className="p-4">
-          {selectedBlock ? (
-            <BlockEditor block={selectedBlock} onChange={updateBlock} />
-          ) : (
-            <p className="text-xs" style={{ color: '#4B5563' }}>
-              Click a block on the canvas to edit its content.
-            </p>
-          )}
-        </div>
+        </Field>
       </div>
     </div>
   );
@@ -662,7 +322,13 @@ function ReviewStep({ form, blocks, segments, onSend, onSchedule, sending, sent,
 export default function CampaignBuilder() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { segments, fetchSegments, createCampaign, updateCampaign, sendCampaign } = useAppStore();
+  const {
+    segments, fetchSegments,
+    createCampaign, updateCampaign, sendCampaign,
+    attributeDefinitions, fetchAttributeDefinitions,
+    assets, fetchAssets,
+    emailTemplates, fetchEmailTemplates,
+  } = useAppStore();
 
   const [step, setStep] = useState(1);
   const [device, setDevice] = useState('Desktop');
@@ -687,7 +353,6 @@ export default function CampaignBuilder() {
   });
 
   useEffect(() => {
-    // Fetch verified SES identities for the From Email dropdown
     client.get('/ses/identities').then((res) => {
       setVerifiedEmails(res.data.emails || []);
       setVerifiedDomains(res.data.domains || []);
@@ -696,6 +361,9 @@ export default function CampaignBuilder() {
 
   useEffect(() => {
     fetchSegments();
+    fetchAttributeDefinitions();
+    fetchEmailTemplates();
+    fetchAssets();
     if (id) {
       client.get(`/campaigns/${id}`).then((res) => {
         const c = res.data.campaign || res.data;
@@ -713,6 +381,18 @@ export default function CampaignBuilder() {
       }).catch(() => {});
     }
   }, [id]);
+
+  const handleLoadTemplate = (template) => {
+    if (template.blocks) {
+      // Re-assign IDs to avoid collisions
+      const loaded = template.blocks.map((b) => ({ ...b, id: Date.now() + Math.random() }));
+      setBlocks(loaded);
+    }
+    // Pre-fill subject if template has one and campaign subject is empty
+    if (template.subject && !form.subject) {
+      setForm((f) => ({ ...f, subject: template.subject }));
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -807,8 +487,27 @@ export default function CampaignBuilder() {
       </div>
 
       <div className="rounded-2xl p-6" style={{ background: '#181C27', border: '1px solid #252B3B' }}>
-        {step === 1 && <SetupStep form={form} setForm={setForm} segments={segments} verifiedEmails={verifiedEmails} verifiedDomains={verifiedDomains} />}
-        {step === 2 && <DesignStep blocks={blocks} setBlocks={setBlocks} device={device} setDevice={setDevice} />}
+        {step === 1 && (
+          <SetupStep
+            form={form}
+            setForm={setForm}
+            segments={segments}
+            verifiedEmails={verifiedEmails}
+            verifiedDomains={verifiedDomains}
+            emailTemplates={emailTemplates}
+            onLoadTemplate={handleLoadTemplate}
+          />
+        )}
+        {step === 2 && (
+          <BlockCanvas
+            blocks={blocks}
+            setBlocks={setBlocks}
+            device={device}
+            setDevice={setDevice}
+            attributeDefinitions={attributeDefinitions}
+            assets={assets}
+          />
+        )}
         {step === 3 && (
           <ReviewStep
             form={form} blocks={blocks} segments={segments}

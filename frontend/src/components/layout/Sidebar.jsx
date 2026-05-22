@@ -13,6 +13,17 @@ const navItems = [
     ),
   },
   {
+    label: 'Assets',
+    to: '/assets',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+        <rect x="2" y="3" width="20" height="14" rx="2" />
+        <line x1="8" y1="21" x2="16" y2="21" />
+        <line x1="12" y1="17" x2="12" y2="21" />
+      </svg>
+    ),
+  },
+  {
     label: 'Audience',
     to: '/audience',
     icon: (
@@ -122,6 +133,29 @@ export default function Sidebar() {
           </NavLink>
         ))}
       </nav>
+
+      {/* Admin link */}
+      <div className="px-3 pb-2 border-t pt-3" style={{ borderColor: '#252B3B' }}>
+        <NavLink
+          to="/admin"
+          className={({ isActive }) =>
+            `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150`
+          }
+          style={({ isActive }) =>
+            isActive
+              ? { background: '#4F7FFF', color: '#fff' }
+              : { color: '#8B92A5' }
+          }
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+            <path d="M4.93 4.93a10 10 0 0 0 0 14.14" />
+            <path d="M12 2v2M12 20v2M2 12h2M20 12h2" />
+          </svg>
+          Admin
+        </NavLink>
+      </div>
 
       {/* Footer */}
       <div className="px-5 py-4 border-t" style={{ borderColor: '#252B3B' }}>

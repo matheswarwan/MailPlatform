@@ -50,6 +50,15 @@ const useAppStore = create((set, get) => ({
     return contact;
   },
 
+  updateContact: async (id, data) => {
+    const res = await client.put(`/contacts/${id}`, data);
+    const updated = res.data.contact || res.data;
+    const normalize = (c) => ({ ...c, _id: c.id, firstName: c.first_name, lastName: c.last_name, createdAt: c.created_at, updatedAt: c.updated_at });
+    const normalized = normalize(updated);
+    set((state) => ({ contacts: state.contacts.map((c) => (c.id === id ? normalized : c)) }));
+    return normalized;
+  },
+
   deleteContact: async (id) => {
     await client.delete(`/contacts/${id}`);
     set((state) => ({ contacts: state.contacts.filter((c) => c.id !== id) }));
@@ -166,20 +175,43 @@ const useAppStore = create((set, get) => ({
     return automation;
   },
 
+  createAutomation: async (data) => {
+    const res = await client.post('/automations', data);
+    const automation = res.data.automation || res.data;
+    set((state) => ({ automations: [automation, ...state.automations] }));
+    return automation;
+  },
+
+  updateAutomation: async (id, data) => {
+    const res = await client.put(`/automations/${id}`, data);
+    const automation = res.data.automation || res.data;
+    set((state) => ({
+      automations: state.automations.map((a) => (a.id === id ? automation : a)),
+    }));
+    return automation;
+  },
+
+  deleteAutomation: async (id) => {
+    await client.delete(`/automations/${id}`);
+    set((state) => ({ automations: state.automations.filter((a) => a.id !== id) }));
+  },
+
   // ── Analytics ─────────────────────────────────────────────────
   analytics: null,
   analyticsLoading: false,
+  analyticsChart: [],
   campaignAnalytics: [],
 
-  fetchAnalytics: async () => {
+  fetchAnalytics: async (period = '30d') => {
     set({ analyticsLoading: true });
     try {
       const [overviewRes, campaignsRes] = await Promise.all([
-        client.get('/analytics/overview'),
-        client.get('/analytics/campaigns'),
+        client.get('/analytics/overview', { params: { period } }),
+        client.get('/analytics/campaigns', { params: { period } }),
       ]);
       set({
         analytics: overviewRes.data.overview || overviewRes.data,
+        analyticsChart: overviewRes.data.daily_chart || [],
         campaignAnalytics: campaignsRes.data.campaigns || campaignsRes.data || [],
         analyticsLoading: false,
       });
@@ -272,6 +304,83 @@ const useAppStore = create((set, get) => ({
     } catch {
       return null;
     }
+  },
+
+  // ── Assets ────────────────────────────────────────────────────
+  assets: [],
+  assetsLoading: false,
+
+  fetchAssets: async (type) => {
+    set({ assetsLoading: true });
+    try {
+      const params = type ? { type } : {};
+      const res = await client.get('/assets', { params });
+      set({ assets: res.data.assets || [], assetsLoading: false });
+    } catch {
+      set({ assetsLoading: false });
+    }
+  },
+
+  uploadAsset: async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await client.post('/assets/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const asset = res.data.asset;
+    set((state) => ({ assets: [asset, ...state.assets] }));
+    return asset;
+  },
+
+  deleteAsset: async (id) => {
+    await client.delete(`/assets/${id}`);
+    set((state) => ({ assets: state.assets.filter((a) => a.id !== id) }));
+  },
+
+  // ── Email Templates ───────────────────────────────────────────
+  emailTemplates: [],
+  emailTemplatesLoading: false,
+
+  fetchEmailTemplates: async () => {
+    set({ emailTemplatesLoading: true });
+    try {
+      const res = await client.get('/email-templates');
+      set({ emailTemplates: res.data.templates || [], emailTemplatesLoading: false });
+    } catch {
+      set({ emailTemplatesLoading: false });
+    }
+  },
+
+  createEmailTemplate: async (data) => {
+    const res = await client.post('/email-templates', data);
+    const template = res.data.template;
+    set((state) => ({ emailTemplates: [template, ...state.emailTemplates] }));
+    return template;
+  },
+
+  updateEmailTemplate: async (id, data) => {
+    const res = await client.put(`/email-templates/${id}`, data);
+    const template = res.data.template;
+    set((state) => ({
+      emailTemplates: state.emailTemplates.map((t) => (t.id === id ? template : t)),
+    }));
+    return template;
+  },
+
+  deleteEmailTemplate: async (id) => {
+    await client.delete(`/email-templates/${id}`);
+    set((state) => ({
+      emailTemplates: state.emailTemplates.filter((t) => t.id !== id),
+    }));
+  },
+
+  seedEmailPresets: async () => {
+    const res = await client.post('/email-templates/seed-presets');
+    if ((res.data.created || []).length > 0) {
+      const listRes = await client.get('/email-templates');
+      set({ emailTemplates: listRes.data.templates || [] });
+    }
+    return res.data;
   },
 }));
 

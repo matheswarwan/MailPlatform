@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   LineChart,
   Line,
@@ -14,40 +14,6 @@ import {
 import useAppStore from '../store/appStore';
 import StatCard from '../components/ui/StatCard';
 
-// ─── Mock data for charts when API data unavailable ───────────────────────────
-function generateLast30Days() {
-  const data = [];
-  const now = new Date();
-  for (let i = 29; i >= 0; i--) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - i);
-    const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    data.push({
-      date: label,
-      sent: Math.floor(Math.random() * 800 + 200),
-      opened: Math.floor(Math.random() * 400 + 80),
-    });
-  }
-  return data;
-}
-
-const MOCK_LINE_DATA = generateLast30Days();
-
-const MOCK_BAR_DATA = [
-  { name: 'Summer Sale', clickRate: 8.4 },
-  { name: 'Newsletter #12', clickRate: 5.2 },
-  { name: 'Black Friday', clickRate: 12.1 },
-  { name: 'Welcome Series', clickRate: 9.8 },
-  { name: 'Win-Back Flow', clickRate: 4.3 },
-];
-
-const MOCK_CAMPAIGNS = [
-  { _id: '1', name: 'Summer Sale 2025', sent: 12540, delivered: 12318, openRate: 0.342, clickRate: 0.084, bounceCount: 67 },
-  { _id: '2', name: 'Monthly Newsletter #12', sent: 8920, delivered: 8801, openRate: 0.281, clickRate: 0.052, bounceCount: 34 },
-  { _id: '3', name: 'Black Friday Preview', sent: 21000, delivered: 20580, openRate: 0.419, clickRate: 0.121, bounceCount: 94 },
-  { _id: '4', name: 'Welcome Series - Email 1', sent: 3400, delivered: 3388, openRate: 0.612, clickRate: 0.098, bounceCount: 12 },
-  { _id: '5', name: 'Win-Back Flow', sent: 2100, delivered: 2037, openRate: 0.198, clickRate: 0.043, bounceCount: 29 },
-];
 
 function pct(n, digits = 1) {
   if (n == null) return '—';
@@ -152,40 +118,59 @@ const BarTooltip = ({ active, payload, label }) => {
 };
 
 export default function Analytics() {
-  const { analytics, analyticsLoading, campaignAnalytics, fetchAnalytics } = useAppStore();
+  const { analytics, analyticsLoading, analyticsChart, campaignAnalytics, fetchAnalytics } = useAppStore();
+  const [period, setPeriod] = useState('30d');
 
   useEffect(() => {
-    fetchAnalytics();
-  }, []);
+    fetchAnalytics(period);
+  }, [period]);
 
-  const overview = analytics || {
-    totalSent: 48960,
-    avgOpenRate: 0.318,
-    avgClickRate: 0.072,
-    bounceRate: 0.031,
-    unsubscribeRate: 0.008,
-    complaintRate: 0.0009,
-  };
+  // Backend returns snake_case; normalise to what the UI needs
+  const overview = analytics
+    ? {
+        totalSent: analytics.total_sends ?? analytics.totalSent ?? 0,
+        avgOpenRate: analytics.open_rate != null ? analytics.open_rate / 100 : (analytics.avgOpenRate ?? 0),
+        avgClickRate: analytics.click_rate != null ? analytics.click_rate / 100 : (analytics.avgClickRate ?? 0),
+        bounceRate: analytics.bounce_rate != null ? analytics.bounce_rate / 100 : (analytics.bounceRate ?? 0),
+        unsubscribeRate: analytics.unsubscribe_rate != null ? analytics.unsubscribe_rate / 100 : (analytics.unsubscribeRate ?? 0),
+        complaintRate: analytics.complaint_rate != null ? analytics.complaint_rate / 100 : (analytics.complaintRate ?? 0),
+      }
+    : null;
 
-  const campaigns = campaignAnalytics.length > 0 ? campaignAnalytics : MOCK_CAMPAIGNS;
+  const lineData = analyticsChart.map((row) => ({
+    date: new Date(row.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    sent: parseInt(row.sends) || 0,
+    opened: parseInt(row.opens) || 0,
+  }));
 
-  const barData =
-    campaigns.length > 0
-      ? campaigns.slice(0, 5).map((c) => ({
-          name: c.name.length > 18 ? c.name.slice(0, 18) + '…' : c.name,
-          clickRate: parseFloat(((c.clickRate || 0) * 100).toFixed(1)),
-        }))
-      : MOCK_BAR_DATA;
+  const barData = campaignAnalytics.slice(0, 5).map((c) => ({
+    name: (c.name || '').length > 18 ? (c.name || '').slice(0, 18) + '…' : (c.name || ''),
+    clickRate: parseFloat((c.click_rate || 0).toFixed(1)),
+  }));
 
   return (
     <div className="space-y-6">
+      {/* Period selector */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold" style={{ color: '#F1F3F9' }}>Analytics</h2>
+        <div className="flex items-center gap-1 p-1 rounded-lg" style={{ background: '#181C27', border: '1px solid #252B3B' }}>
+          {[['7d','7 days'],['30d','30 days'],['90d','90 days'],['1y','1 year']].map(([val, label]) => (
+            <button key={val} onClick={() => setPeriod(val)}
+              className="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
+              style={{ background: period === val ? '#4F7FFF' : 'transparent', color: period === val ? '#fff' : '#8B92A5' }}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Top stat cards */}
       <div className="grid grid-cols-5 gap-4">
         <StatCard
           label="Total Emails Sent"
-          value={overview.totalSent?.toLocaleString() || '—'}
+          value={overview ? overview.totalSent.toLocaleString() : '—'}
           trend="up"
-          change={12}
+          change={null}
           icon={
             <svg viewBox="0 0 24 24" fill="none" stroke="#4F7FFF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
               <line x1="22" y1="2" x2="11" y2="13" />
@@ -195,9 +180,9 @@ export default function Analytics() {
         />
         <StatCard
           label="Avg Open Rate"
-          value={pct(overview.avgOpenRate)}
+          value={overview ? pct(overview.avgOpenRate) : '—'}
           trend="up"
-          change={3.2}
+          change={null}
           icon={
             <svg viewBox="0 0 24 24" fill="none" stroke="#22C55E" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
               <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
@@ -207,9 +192,9 @@ export default function Analytics() {
         />
         <StatCard
           label="Avg Click Rate"
-          value={pct(overview.avgClickRate)}
+          value={overview ? pct(overview.avgClickRate) : '—'}
           trend="down"
-          change={-1.1}
+          change={null}
           icon={
             <svg viewBox="0 0 24 24" fill="none" stroke="#4F7FFF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
               <path d="M15 3h6v6M14 10l6.1-6.1M9 21H3v-6M10 14l-6.1 6.1" />
@@ -218,9 +203,9 @@ export default function Analytics() {
         />
         <StatCard
           label="Bounce Rate"
-          value={pct(overview.bounceRate)}
-          trend={overview.bounceRate < 0.02 ? 'up' : 'down'}
-          change={-0.4}
+          value={overview ? pct(overview.bounceRate) : '—'}
+          trend={overview && overview.bounceRate < 0.02 ? 'up' : 'down'}
+          change={null}
           icon={
             <svg viewBox="0 0 24 24" fill="none" stroke="#EAB308" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
               <polyline points="1 4 1 10 7 10" />
@@ -230,9 +215,9 @@ export default function Analytics() {
         />
         <StatCard
           label="Unsubscribe Rate"
-          value={pct(overview.unsubscribeRate)}
+          value={overview ? pct(overview.unsubscribeRate) : '—'}
           trend="up"
-          change={-0.2}
+          change={null}
           icon={
             <svg viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
               <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -278,48 +263,28 @@ export default function Analytics() {
               </span>
             </div>
           </div>
-          <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={MOCK_LINE_DATA} margin={{ top: 0, right: 4, bottom: 0, left: -16 }}>
-              <CartesianGrid stroke="#252B3B" strokeDasharray="3 3" vertical={false} />
-              <XAxis
-                dataKey="date"
-                tick={{ fill: '#8B92A5', fontSize: 11 }}
-                tickLine={false}
-                axisLine={false}
-                interval={6}
-              />
-              <YAxis
-                tick={{ fill: '#8B92A5', fontSize: 11 }}
-                tickLine={false}
-                axisLine={false}
-              />
-              <Tooltip content={<CustomTooltip />} />
-              <Line
-                type="monotone"
-                dataKey="sent"
-                name="Sent"
-                stroke="#4F7FFF"
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 4, fill: '#4F7FFF' }}
-              />
-              <Line
-                type="monotone"
-                dataKey="opened"
-                name="Opened"
-                stroke="#22C55E"
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 4, fill: '#22C55E' }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          {lineData.length === 0 ? (
+            <div className="flex flex-col items-center justify-center" style={{ height: 220 }}>
+              <p className="text-sm" style={{ color: '#4A5060' }}>No send activity in this period</p>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={lineData} margin={{ top: 0, right: 4, bottom: 0, left: -16 }}>
+                <CartesianGrid stroke="#252B3B" strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="date" tick={{ fill: '#8B92A5', fontSize: 11 }} tickLine={false} axisLine={false} interval={6} />
+                <YAxis tick={{ fill: '#8B92A5', fontSize: 11 }} tickLine={false} axisLine={false} />
+                <Tooltip content={<CustomTooltip />} />
+                <Line type="monotone" dataKey="sent" name="Sent" stroke="#4F7FFF" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: '#4F7FFF' }} />
+                <Line type="monotone" dataKey="opened" name="Opened" stroke="#22C55E" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: '#22C55E' }} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
         {/* Reputation widget */}
         <ReputationWidget
-          bounceRate={overview.bounceRate || 0.031}
-          complaintRate={overview.complaintRate || 0.0009}
+          bounceRate={overview?.bounceRate ?? 0}
+          complaintRate={overview?.complaintRate ?? 0}
         />
       </div>
 
@@ -331,28 +296,21 @@ export default function Analytics() {
           style={{ background: '#181C27', border: '1px solid #252B3B' }}
         >
           <h3 className="text-sm font-semibold mb-5" style={{ color: '#F1F3F9' }}>Top Campaigns by Click Rate</h3>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={barData} layout="vertical" margin={{ top: 0, right: 8, bottom: 0, left: 8 }}>
-              <CartesianGrid stroke="#252B3B" strokeDasharray="3 3" horizontal={false} />
-              <XAxis
-                type="number"
-                tick={{ fill: '#8B92A5', fontSize: 11 }}
-                tickLine={false}
-                axisLine={false}
-                unit="%"
-              />
-              <YAxis
-                type="category"
-                dataKey="name"
-                tick={{ fill: '#8B92A5', fontSize: 11 }}
-                tickLine={false}
-                axisLine={false}
-                width={90}
-              />
-              <Tooltip content={<BarTooltip />} />
-              <Bar dataKey="clickRate" fill="#4F7FFF" radius={[0, 4, 4, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          {barData.length === 0 ? (
+            <div className="flex flex-col items-center justify-center" style={{ height: 200 }}>
+              <p className="text-sm" style={{ color: '#4A5060' }}>No campaign data yet</p>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={barData} layout="vertical" margin={{ top: 0, right: 8, bottom: 0, left: 8 }}>
+                <CartesianGrid stroke="#252B3B" strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" tick={{ fill: '#8B92A5', fontSize: 11 }} tickLine={false} axisLine={false} unit="%" />
+                <YAxis type="category" dataKey="name" tick={{ fill: '#8B92A5', fontSize: 11 }} tickLine={false} axisLine={false} width={90} />
+                <Tooltip content={<BarTooltip />} />
+                <Bar dataKey="clickRate" fill="#4F7FFF" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
         {/* Campaign table */}
@@ -369,48 +327,33 @@ export default function Analytics() {
                 <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
               </svg>
             </div>
+          ) : campaignAnalytics.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-2">
+              <p className="text-sm font-medium" style={{ color: '#4A5060' }}>No campaign data for this period</p>
+              <p className="text-xs" style={{ color: '#252B3B' }}>Send a campaign to start seeing performance data here</p>
+            </div>
           ) : (
             <table className="w-full">
               <thead>
                 <tr style={{ borderBottom: '1px solid #252B3B' }}>
                   {['Campaign', 'Sent', 'Delivered', 'Open Rate', 'Click Rate', 'Bounces'].map((h) => (
-                    <th
-                      key={h}
-                      className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider"
-                      style={{ color: '#8B92A5' }}
-                    >
-                      {h}
-                    </th>
+                    <th key={h} className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: '#8B92A5' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {campaigns.map((c, idx) => (
-                  <tr
-                    key={c._id}
-                    style={{ borderBottom: idx < campaigns.length - 1 ? '1px solid #252B3B' : 'none' }}
+                {campaignAnalytics.map((c, idx) => (
+                  <tr key={c.id} style={{ borderBottom: idx < campaignAnalytics.length - 1 ? '1px solid #252B3B' : 'none' }}
                     className="transition-colors"
                     onMouseEnter={(e) => (e.currentTarget.style.background = '#1E2436')}
                     onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                   >
-                    <td className="px-5 py-3">
-                      <p className="text-sm font-medium truncate max-w-xs" style={{ color: '#F1F3F9' }}>{c.name}</p>
-                    </td>
-                    <td className="px-5 py-3 text-sm" style={{ color: '#F1F3F9' }}>
-                      {c.sent?.toLocaleString() ?? '—'}
-                    </td>
-                    <td className="px-5 py-3 text-sm" style={{ color: '#F1F3F9' }}>
-                      {c.delivered?.toLocaleString() ?? '—'}
-                    </td>
-                    <td className="px-5 py-3 text-sm" style={{ color: c.openRate > 0.3 ? '#22C55E' : '#F1F3F9' }}>
-                      {pct(c.openRate)}
-                    </td>
-                    <td className="px-5 py-3 text-sm" style={{ color: c.clickRate > 0.05 ? '#22C55E' : '#F1F3F9' }}>
-                      {pct(c.clickRate)}
-                    </td>
-                    <td className="px-5 py-3 text-sm" style={{ color: c.bounceCount > 50 ? '#EF4444' : '#F1F3F9' }}>
-                      {c.bounceCount ?? '—'}
-                    </td>
+                    <td className="px-5 py-3"><p className="text-sm font-medium truncate max-w-xs" style={{ color: '#F1F3F9' }}>{c.name}</p></td>
+                    <td className="px-5 py-3 text-sm" style={{ color: '#F1F3F9' }}>{(c.total_sends ?? 0).toLocaleString()}</td>
+                    <td className="px-5 py-3 text-sm" style={{ color: '#F1F3F9' }}>{(c.total_delivered ?? 0).toLocaleString()}</td>
+                    <td className="px-5 py-3 text-sm" style={{ color: c.open_rate > 30 ? '#22C55E' : '#F1F3F9' }}>{c.open_rate != null ? `${c.open_rate.toFixed(1)}%` : '—'}</td>
+                    <td className="px-5 py-3 text-sm" style={{ color: c.click_rate > 5 ? '#22C55E' : '#F1F3F9' }}>{c.click_rate != null ? `${c.click_rate.toFixed(1)}%` : '—'}</td>
+                    <td className="px-5 py-3 text-sm" style={{ color: (c.total_bounced ?? 0) > 50 ? '#EF4444' : '#F1F3F9' }}>{c.total_bounced ?? 0}</td>
                   </tr>
                 ))}
               </tbody>

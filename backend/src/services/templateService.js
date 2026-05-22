@@ -132,6 +132,9 @@ function normalizeBlock(block) {
         companyName: c.company || '',
         address: c.address || '',
       };
+    case 'mjml':
+    case 'html':
+      return { type, code: c.code || '' };
     default:
       return { type, ...c };
   }
@@ -161,6 +164,10 @@ function renderBlock(rawBlock, brandColor) {
       return renderFooterBlock(block, brandColor);
     case 'spacer':
       return renderSpacerBlock(block);
+    case 'mjml':
+      return renderMjmlBlock(block);
+    case 'html':
+      return renderHtmlBlock(block);
     default:
       console.warn(`Unknown block type: ${block.type}`);
       return '';
@@ -380,6 +387,39 @@ function renderSpacerBlock(block) {
 </mj-section>`;
 }
 
+function renderMjmlBlock(block) {
+  const code = (block.code || block.content?.code || '').trim();
+  if (!code) return '';
+
+  // If the user pasted a full MJML document, extract just the <mj-body> contents
+  if (/<mjml[\s>]/i.test(code)) {
+    const bodyMatch = code.match(/<mj-body[^>]*>([\s\S]*?)<\/mj-body>/i);
+    if (bodyMatch) return bodyMatch[1].trim();
+    // No <mj-body> found — strip any outer <mjml> tags and return what's inside
+    return code
+      .replace(/<\/?mjml[^>]*>/gi, '')
+      .replace(/<\/?mj-head[^>]*>[\s\S]*?<\/mj-head>/gi, '')
+      .trim();
+  }
+
+  // Otherwise inject as-is (user wrote a plain <mj-section> fragment)
+  return code;
+}
+
+function renderHtmlBlock(block) {
+  // Wrap raw HTML inside mj-text so it sits in the proper MJML column/section structure
+  const code = (block.code || block.content?.code || '').trim();
+  if (!code) return '';
+  return `
+<mj-section background-color="#ffffff" padding="0">
+  <mj-column padding="0">
+    <mj-text padding="0">
+      ${code}
+    </mj-text>
+  </mj-column>
+</mj-section>`;
+}
+
 // ─── Variable substitution ────────────────────────────────────────────────────
 
 /**
@@ -395,6 +435,10 @@ function applyVariables(html, contact, unsubscribeUrl, preferenceUrl) {
       'there',
     email: contact.email || '',
     company: contact.company || '',
+    phone: contact.phone || '',
+    sex: contact.sex || '',
+    birthday: contact.birthday ? contact.birthday.toString().substring(0, 10) : '',
+    source: contact.source || '',
     unsubscribe_url: unsubscribeUrl,
     preference_url: preferenceUrl,
     company_name: process.env.APP_COMPANY_NAME || 'MailFlow',
@@ -406,6 +450,13 @@ function applyVariables(html, contact, unsubscribeUrl, preferenceUrl) {
   for (const [key, value] of Object.entries(vars)) {
     const regex = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'gi');
     result = result.replace(regex, escapeHtml(String(value || '')));
+  }
+
+  // Custom fields: {{custom.field_key}}
+  const customFields = contact.custom_fields || {};
+  for (const [key, value] of Object.entries(customFields)) {
+    const regex = new RegExp(`\\{\\{\\s*custom\\.${key}\\s*\\}\\}`, 'gi');
+    result = result.replace(regex, escapeHtml(String(value ?? '')));
   }
 
   return result;
@@ -476,6 +527,12 @@ function generateTextVersion(blocks, contact, unsubscribeUrl, preferenceUrl) {
         lines.push('');
         break;
 
+      case 'mjml':
+      case 'html':
+        lines.push(stripHtmlTags(block.code || ''));
+        lines.push('');
+        break;
+
       default:
         break;
     }
@@ -496,6 +553,10 @@ function applyTextVariables(text, contact, unsubscribeUrl, preferenceUrl) {
       'there',
     email: contact.email || '',
     company: contact.company || '',
+    phone: contact.phone || '',
+    sex: contact.sex || '',
+    birthday: contact.birthday ? contact.birthday.toString().substring(0, 10) : '',
+    source: contact.source || '',
     unsubscribe_url: unsubscribeUrl,
     preference_url: preferenceUrl,
     company_name: process.env.APP_COMPANY_NAME || 'MailFlow',
@@ -508,6 +569,14 @@ function applyTextVariables(text, contact, unsubscribeUrl, preferenceUrl) {
     const regex = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'gi');
     result = result.replace(regex, String(value || ''));
   }
+
+  // Custom fields: {{custom.field_key}}
+  const customFields = contact.custom_fields || {};
+  for (const [key, value] of Object.entries(customFields)) {
+    const regex = new RegExp(`\\{\\{\\s*custom\\.${key}\\s*\\}\\}`, 'gi');
+    result = result.replace(regex, String(value ?? ''));
+  }
+
   return result;
 }
 

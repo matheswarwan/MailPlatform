@@ -75,6 +75,7 @@ export default function Contacts() {
     contactsLoading,
     fetchContacts,
     addContact,
+    updateContact,
     deleteContact,
     segments,
     fetchSegments,
@@ -92,6 +93,10 @@ export default function Contacts() {
   const [addForm, setAddForm] = useState({ email: '', firstName: '', lastName: '', tags: '', sex: '', customFields: {} });
   const [addLoading, setAddLoading] = useState(false);
   const [addError, setAddError] = useState('');
+  const [editContact, setEditContact] = useState(null); // contact being edited
+  const [editForm, setEditForm] = useState({});
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState('');
 
   useEffect(() => {
     fetchContacts({ page, q: search, status: statusFilter !== 'all' ? statusFilter : undefined });
@@ -157,6 +162,48 @@ export default function Contacts() {
       await deleteContact(id);
     } catch {
       // ignore
+    }
+  };
+
+  const openEdit = (contact) => {
+    setEditContact(contact);
+    setEditForm({
+      email: contact.email || '',
+      firstName: contact.firstName || '',
+      lastName: contact.lastName || '',
+      company: contact.company || '',
+      phone: contact.phone || '',
+      sex: contact.sex || '',
+      birthday: contact.birthday ? contact.birthday.substring(0, 10) : '',
+      status: contact.status || 'active',
+      tags: (contact.tags || []).filter((t) => !t.startsWith('seg:')).join(', '),
+      customFields: contact.custom_fields ? { ...contact.custom_fields } : {},
+    });
+    setEditError('');
+  };
+
+  const handleEditSave = async (e) => {
+    e.preventDefault();
+    setEditLoading(true);
+    setEditError('');
+    try {
+      await updateContact(editContact._id || editContact.id, {
+        email: editForm.email,
+        firstName: editForm.firstName || null,
+        lastName: editForm.lastName || null,
+        company: editForm.company || null,
+        phone: editForm.phone || null,
+        sex: editForm.sex || null,
+        birthday: editForm.birthday || null,
+        status: editForm.status,
+        tags: editForm.tags.split(',').map((t) => t.trim()).filter(Boolean),
+        customFields: Object.keys(editForm.customFields).length > 0 ? editForm.customFields : {},
+      });
+      setEditContact(null);
+    } catch (err) {
+      setEditError(err.response?.data?.error || 'Failed to save changes.');
+    } finally {
+      setEditLoading(false);
     }
   };
 
@@ -367,20 +414,36 @@ export default function Contacts() {
                         {formatDate(contact.lastActivity)}
                       </td>
                       <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={() => handleDelete(contact._id)}
-                          className="flex items-center justify-center w-7 h-7 rounded-lg transition-colors"
-                          style={{ color: '#8B92A5' }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = '#2D0E0E'; e.currentTarget.style.color = '#EF4444'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#8B92A5'; }}
-                        >
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-                            <polyline points="3 6 5 6 21 6" />
-                            <path d="M19 6l-1 14H6L5 6" />
-                            <path d="M10 11v6M14 11v6" />
-                            <path d="M9 6V4h6v2" />
-                          </svg>
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => openEdit(contact)}
+                            className="flex items-center justify-center w-7 h-7 rounded-lg transition-colors"
+                            style={{ color: '#8B92A5' }}
+                            title="Edit contact"
+                            onMouseEnter={(e) => { e.currentTarget.style.background = '#1A2744'; e.currentTarget.style.color = '#4F7FFF'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#8B92A5'; }}
+                          >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => handleDelete(contact._id)}
+                            className="flex items-center justify-center w-7 h-7 rounded-lg transition-colors"
+                            style={{ color: '#8B92A5' }}
+                            title="Delete contact"
+                            onMouseEnter={(e) => { e.currentTarget.style.background = '#2D0E0E'; e.currentTarget.style.color = '#EF4444'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#8B92A5'; }}
+                          >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                              <polyline points="3 6 5 6 21 6" />
+                              <path d="M19 6l-1 14H6L5 6" />
+                              <path d="M10 11v6M14 11v6" />
+                              <path d="M9 6V4h6v2" />
+                            </svg>
+                          </button>
+                        </div>
                       </td>
                     </tr>
 
@@ -439,6 +502,39 @@ export default function Contacts() {
                                     Added: <span style={{ color: '#F1F3F9' }}>{formatDate(contact.createdAt)}</span>
                                   </p>
                                 </div>
+                              </div>
+                            </div>
+                            {/* Additional attributes row */}
+                            <div className="mt-4 pt-4 border-t" style={{ borderColor: '#252B3B' }}>
+                              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: '#8B92A5' }}>Additional Details</p>
+                              <div className="flex flex-wrap gap-x-6 gap-y-2">
+                                <div>
+                                  <span className="text-xs" style={{ color: '#8B92A5' }}>Phone: </span>
+                                  <span className="text-xs" style={{ color: contact.phone ? '#F1F3F9' : '#4A5060' }}>{contact.phone || '—'}</span>
+                                </div>
+                                <div>
+                                  <span className="text-xs" style={{ color: '#8B92A5' }}>Company: </span>
+                                  <span className="text-xs" style={{ color: contact.company ? '#F1F3F9' : '#4A5060' }}>{contact.company || '—'}</span>
+                                </div>
+                                <div>
+                                  <span className="text-xs" style={{ color: '#8B92A5' }}>Sex: </span>
+                                  <span className="text-xs" style={{ color: contact.sex ? '#F1F3F9' : '#4A5060' }}>{contact.sex || '—'}</span>
+                                </div>
+                                <div>
+                                  <span className="text-xs" style={{ color: '#8B92A5' }}>Birthday: </span>
+                                  <span className="text-xs" style={{ color: contact.birthday ? '#F1F3F9' : '#4A5060' }}>{contact.birthday || '—'}</span>
+                                </div>
+                                {(attributeDefinitions || []).map((def) => {
+                                  const value = contact.custom_fields?.[def.key];
+                                  return (
+                                    <div key={def.id}>
+                                      <span className="text-xs" style={{ color: '#8B92A5' }}>{def.name}: </span>
+                                      <span className="text-xs" style={{ color: value != null ? '#F1F3F9' : '#4A5060' }}>
+                                        {value != null ? String(value) : '—'}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
                               </div>
                             </div>
                           </td>
@@ -665,6 +761,165 @@ export default function Contacts() {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* ── Edit Contact Modal ─────────────────────────────────────── */}
+      <Modal isOpen={!!editContact} onClose={() => setEditContact(null)} title="Edit Contact">
+        {editContact && (
+          <form onSubmit={handleEditSave} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1.5" style={{ color: '#8B92A5' }}>Email <span style={{ color: '#EF4444' }}>*</span></label>
+              <input
+                type="email"
+                required
+                value={editForm.email}
+                onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                className="w-full px-4 py-2.5 rounded-lg text-sm outline-none"
+                style={{ background: '#0F1117', border: '1px solid #252B3B', color: '#F1F3F9' }}
+                onFocus={(e) => (e.target.style.borderColor = '#4F7FFF')}
+                onBlur={(e) => (e.target.style.borderColor = '#252B3B')}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: '#8B92A5' }}>First Name</label>
+                <input type="text" value={editForm.firstName} onChange={(e) => setEditForm({ ...editForm, firstName: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-lg text-sm outline-none"
+                  style={{ background: '#0F1117', border: '1px solid #252B3B', color: '#F1F3F9' }}
+                  onFocus={(e) => (e.target.style.borderColor = '#4F7FFF')} onBlur={(e) => (e.target.style.borderColor = '#252B3B')} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: '#8B92A5' }}>Last Name</label>
+                <input type="text" value={editForm.lastName} onChange={(e) => setEditForm({ ...editForm, lastName: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-lg text-sm outline-none"
+                  style={{ background: '#0F1117', border: '1px solid #252B3B', color: '#F1F3F9' }}
+                  onFocus={(e) => (e.target.style.borderColor = '#4F7FFF')} onBlur={(e) => (e.target.style.borderColor = '#252B3B')} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: '#8B92A5' }}>Company</label>
+                <input type="text" value={editForm.company} onChange={(e) => setEditForm({ ...editForm, company: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-lg text-sm outline-none"
+                  style={{ background: '#0F1117', border: '1px solid #252B3B', color: '#F1F3F9' }}
+                  onFocus={(e) => (e.target.style.borderColor = '#4F7FFF')} onBlur={(e) => (e.target.style.borderColor = '#252B3B')} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: '#8B92A5' }}>Phone</label>
+                <input type="text" value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-lg text-sm outline-none"
+                  style={{ background: '#0F1117', border: '1px solid #252B3B', color: '#F1F3F9' }}
+                  onFocus={(e) => (e.target.style.borderColor = '#4F7FFF')} onBlur={(e) => (e.target.style.borderColor = '#252B3B')} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: '#8B92A5' }}>Sex</label>
+                <select value={editForm.sex} onChange={(e) => setEditForm({ ...editForm, sex: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-lg text-sm outline-none"
+                  style={{ background: '#0F1117', border: '1px solid #252B3B', color: '#F1F3F9' }}
+                  onFocus={(e) => (e.target.style.borderColor = '#4F7FFF')} onBlur={(e) => (e.target.style.borderColor = '#252B3B')}>
+                  <option value="">Prefer not to say</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="non-binary">Non-binary</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: '#8B92A5' }}>Birthday</label>
+                <input type="date" value={editForm.birthday} onChange={(e) => setEditForm({ ...editForm, birthday: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-lg text-sm outline-none"
+                  style={{ background: '#0F1117', border: '1px solid #252B3B', color: '#F1F3F9' }}
+                  onFocus={(e) => (e.target.style.borderColor = '#4F7FFF')} onBlur={(e) => (e.target.style.borderColor = '#252B3B')} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: '#8B92A5' }}>Status</label>
+                <select value={editForm.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-lg text-sm outline-none"
+                  style={{ background: '#0F1117', border: '1px solid #252B3B', color: '#F1F3F9' }}
+                  onFocus={(e) => (e.target.style.borderColor = '#4F7FFF')} onBlur={(e) => (e.target.style.borderColor = '#252B3B')}>
+                  <option value="active">Active</option>
+                  <option value="unsubscribed">Unsubscribed</option>
+                  <option value="bounced">Bounced</option>
+                  <option value="complained">Complained</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: '#8B92A5' }}>Tags</label>
+                <input type="text" value={editForm.tags} onChange={(e) => setEditForm({ ...editForm, tags: e.target.value })}
+                  placeholder="newsletter, vip"
+                  className="w-full px-4 py-2.5 rounded-lg text-sm outline-none"
+                  style={{ background: '#0F1117', border: '1px solid #252B3B', color: '#F1F3F9' }}
+                  onFocus={(e) => (e.target.style.borderColor = '#4F7FFF')} onBlur={(e) => (e.target.style.borderColor = '#252B3B')} />
+              </div>
+            </div>
+
+            {attributeDefinitions.length > 0 && (
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-wider pt-1" style={{ color: '#8B92A5', borderTop: '1px solid #252B3B', paddingTop: 12 }}>Custom Fields</p>
+                {attributeDefinitions.map((def) => (
+                  <div key={def.id}>
+                    <label className="block text-sm font-medium mb-1.5" style={{ color: '#8B92A5' }}>{def.name}</label>
+                    {(def.type === 'text') && (
+                      <input type="text" value={editForm.customFields[def.key] || ''}
+                        onChange={(e) => setEditForm({ ...editForm, customFields: { ...editForm.customFields, [def.key]: e.target.value } })}
+                        className="w-full px-4 py-2.5 rounded-lg text-sm outline-none"
+                        style={{ background: '#0F1117', border: '1px solid #252B3B', color: '#F1F3F9' }}
+                        onFocus={(e) => (e.target.style.borderColor = '#4F7FFF')} onBlur={(e) => (e.target.style.borderColor = '#252B3B')} />
+                    )}
+                    {(def.type === 'number') && (
+                      <input type="number" value={editForm.customFields[def.key] || ''}
+                        onChange={(e) => setEditForm({ ...editForm, customFields: { ...editForm.customFields, [def.key]: e.target.value } })}
+                        className="w-full px-4 py-2.5 rounded-lg text-sm outline-none"
+                        style={{ background: '#0F1117', border: '1px solid #252B3B', color: '#F1F3F9' }}
+                        onFocus={(e) => (e.target.style.borderColor = '#4F7FFF')} onBlur={(e) => (e.target.style.borderColor = '#252B3B')} />
+                    )}
+                    {(def.type === 'date') && (
+                      <input type="date" value={editForm.customFields[def.key] || ''}
+                        onChange={(e) => setEditForm({ ...editForm, customFields: { ...editForm.customFields, [def.key]: e.target.value } })}
+                        className="w-full px-4 py-2.5 rounded-lg text-sm outline-none"
+                        style={{ background: '#0F1117', border: '1px solid #252B3B', color: '#F1F3F9' }}
+                        onFocus={(e) => (e.target.style.borderColor = '#4F7FFF')} onBlur={(e) => (e.target.style.borderColor = '#252B3B')} />
+                    )}
+                    {(def.type === 'boolean') && (
+                      <div className="flex items-center gap-2 px-4 py-2.5">
+                        <input type="checkbox" checked={!!editForm.customFields[def.key]}
+                          onChange={(e) => setEditForm({ ...editForm, customFields: { ...editForm.customFields, [def.key]: e.target.checked } })}
+                          className="rounded accent-blue-500 cursor-pointer w-4 h-4" />
+                        <span className="text-sm" style={{ color: '#F1F3F9' }}>{def.name}</span>
+                      </div>
+                    )}
+                    {(def.type === 'select') && (
+                      <select value={editForm.customFields[def.key] || ''}
+                        onChange={(e) => setEditForm({ ...editForm, customFields: { ...editForm.customFields, [def.key]: e.target.value } })}
+                        className="w-full px-4 py-2.5 rounded-lg text-sm outline-none"
+                        style={{ background: '#0F1117', border: '1px solid #252B3B', color: '#F1F3F9' }}
+                        onFocus={(e) => (e.target.style.borderColor = '#4F7FFF')} onBlur={(e) => (e.target.style.borderColor = '#252B3B')}>
+                        <option value="">Select…</option>
+                        {(def.options || []).map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                      </select>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {editError && (
+              <p className="text-sm px-3 py-2 rounded-lg" style={{ background: '#EF444420', color: '#EF4444' }}>{editError}</p>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="secondary" size="md" type="button" onClick={() => setEditContact(null)}>Cancel</Button>
+              <Button variant="primary" size="md" type="submit" loading={editLoading}>Save Changes</Button>
+            </div>
+          </form>
+        )}
       </Modal>
     </div>
   );
