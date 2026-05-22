@@ -3,17 +3,16 @@ import { authenticate } from '../middleware/auth.js';
 
 /**
  * Evaluate segment rules against contacts.
- * Supported rule types in v1:
- *   { field: 'tag',    operator: 'contains',    value: 'newsletter' }
- *   { field: 'status', operator: 'equals',      value: 'active' }
- *   { field: 'email',  operator: 'contains',    value: '@gmail.com' }
- *   { field: 'created_at', operator: 'after',   value: '2024-01-01' }
- *   { field: 'created_at', operator: 'before',  value: '2025-01-01' }
  *
- * Returns { whereClause, params } to append to a base accounts query.
+ * Rule format: { field, operator, value, value2?, fieldType? }
+ *   - field: standard field key OR 'custom:fieldkey' for custom JSONB fields
+ *   - value2: only used for 'between' operator on numbers
+ *   - fieldType: required for custom fields to determine SQL casting
+ *
+ * Returns { conditions, params } to append to a base accounts query.
  * Caller must supply the first param ($1) as account_id.
  */
-function buildSegmentQuery(rules, baseParams = []) {
+export function buildSegmentQuery(rules, baseParams = []) {
   const conditions = [];
   const params = [...baseParams];
 
@@ -21,19 +20,197 @@ function buildSegmentQuery(rules, baseParams = []) {
     return { conditions: [], params };
   }
 
-  for (const rule of rules) {
-    const { field, operator, value } = rule;
-    if (!field || !operator || value === undefined || value === null) continue;
+  const TEXT_FIELDS = ['email', 'first_name', 'last_name', 'company', 'phone'];
+  const DATE_FIELDS = ['birthday', 'created_at'];
 
-    if (field === 'tag') {
-      if (operator === 'contains' || operator === 'equals') {
-        params.push(value);
-        conditions.push(`$${params.length} = ANY(tags)`);
-      } else if (operator === 'not_contains') {
-        params.push(value);
-        conditions.push(`NOT ($${params.length} = ANY(tags))`);
+  for (const rule of rules) {
+    const { field, operator, value, value2, fieldType } = rule;
+    if (!field || !operator) continue;
+
+    // ── Custom JSONB fields ────────────────────────────────────────────────────
+    if (field.startsWith('custom:')) {
+      const fieldKey = field.slice(7); // strip 'custom:' prefix
+      const col = `custom_fields->>'${fieldKey}'`;
+
+      if (operator === 'is_empty') {
+        conditions.push(`(${col} IS NULL OR ${col} = '')`);
+        continue;
       }
-    } else if (field === 'status') {
+      if (operator === 'is_not_empty') {
+        conditions.push(`(${col} IS NOT NULL AND ${col} != '')`);
+        continue;
+      }
+
+      if (value === undefined || value === null) continue;
+
+      if (fieldType === 'text') {
+        if (operator === 'contains') {
+          params.push(`%${value}%`);
+          conditions.push(`${col} ILIKE $${params.length}`);
+        } else if (operator === 'not_contains') {
+          params.push(`%${value}%`);
+          conditions.push(`${col} NOT ILIKE $${params.length}`);
+        } else if (operator === 'equals') {
+          params.push(value);
+          conditions.push(`${col} = $${params.length}`);
+        } else if (operator === 'not_equals') {
+          params.push(value);
+          conditions.push(`${col} != $${params.length}`);
+        } else if (operator === 'starts_with') {
+          params.push(`${value}%`);
+          conditions.push(`${col} ILIKE $${params.length}`);
+        } else if (operator === 'ends_with') {
+          params.push(`%${value}`);
+          conditions.push(`${col} ILIKE $${params.length}`);
+        }
+      } else if (fieldType === 'number') {
+        const numCol = `(${col})::numeric`;
+        if (operator === 'equals') {
+          params.push(value);
+          conditions.push(`${numCol} = $${params.length}::numeric`);
+        } else if (operator === 'not_equals') {
+          params.push(value);
+          conditions.push(`${numCol} != $${params.length}::numeric`);
+        } else if (operator === 'greater_than') {
+          params.push(value);
+          conditions.push(`${numCol} > $${params.length}::numeric`);
+        } else if (operator === 'less_than') {
+          params.push(value);
+          conditions.push(`${numCol} < $${params.length}::numeric`);
+        } else if (operator === 'between' && value2 !== undefined && value2 !== null) {
+          params.push(value);
+          const p1 = params.length;
+          params.push(value2);
+          const p2 = params.length;
+          conditions.push(`${numCol} BETWEEN $${p1}::numeric AND $${p2}::numeric`);
+        }
+      } else if (fieldType === 'date') {
+        const dateCol = `(${col})::date`;
+        if (operator === 'before') {
+          params.push(value);
+          conditions.push(`${dateCol} < $${params.length}::date`);
+        } else if (operator === 'after') {
+          params.push(value);
+          conditions.push(`${dateCol} > $${params.length}::date`);
+        } else if (operator === 'equals') {
+          params.push(value);
+          conditions.push(`${dateCol} = $${params.length}::date`);
+        } else if (operator === 'within_last_days') {
+          params.push(value);
+          conditions.push(`${dateCol} >= (NOW() - INTERVAL '1 day' * $${params.length}::int)`);
+        }
+      } else if (fieldType === 'boolean') {
+        if (operator === 'equals') {
+          params.push(value);
+          conditions.push(`(${col})::boolean = $${params.length}::boolean`);
+        }
+      }
+
+      continue;
+    }
+
+    // ── Standard text fields ──────────────────────────────────────────────────
+    if (TEXT_FIELDS.includes(field)) {
+      if (operator === 'is_empty') {
+        conditions.push(`(${field} IS NULL OR ${field} = '')`);
+      } else if (operator === 'is_not_empty') {
+        conditions.push(`(${field} IS NOT NULL AND ${field} != '')`);
+      } else {
+        if (value === undefined || value === null) continue;
+        if (operator === 'contains') {
+          params.push(`%${value}%`);
+          conditions.push(`${field} ILIKE $${params.length}`);
+        } else if (operator === 'not_contains') {
+          params.push(`%${value}%`);
+          conditions.push(`${field} NOT ILIKE $${params.length}`);
+        } else if (operator === 'equals') {
+          params.push(value);
+          conditions.push(`${field} ILIKE $${params.length}`);
+        } else if (operator === 'not_equals') {
+          params.push(value);
+          conditions.push(`${field} NOT ILIKE $${params.length}`);
+        } else if (operator === 'starts_with') {
+          params.push(`${value}%`);
+          conditions.push(`${field} ILIKE $${params.length}`);
+        } else if (operator === 'ends_with') {
+          params.push(`%${value}`);
+          conditions.push(`${field} ILIKE $${params.length}`);
+        }
+      }
+      continue;
+    }
+
+    // ── sex ───────────────────────────────────────────────────────────────────
+    if (field === 'sex') {
+      if (operator === 'is_empty') {
+        conditions.push(`sex IS NULL`);
+      } else if (operator === 'is_not_empty') {
+        conditions.push(`sex IS NOT NULL`);
+      } else {
+        if (value === undefined || value === null) continue;
+        if (operator === 'equals') {
+          params.push(value);
+          conditions.push(`sex = $${params.length}`);
+        } else if (operator === 'not_equals') {
+          params.push(value);
+          conditions.push(`sex != $${params.length}`);
+        }
+      }
+      continue;
+    }
+
+    // ── age (derived from birthday) ───────────────────────────────────────────
+    if (field === 'age') {
+      if (value === undefined || value === null) continue;
+      const ageExpr = `EXTRACT(YEAR FROM AGE(birthday::date))`;
+      let cond = '';
+      if (operator === 'equals') {
+        params.push(value);
+        cond = `${ageExpr} = $${params.length}::numeric`;
+      } else if (operator === 'not_equals') {
+        params.push(value);
+        cond = `${ageExpr} != $${params.length}::numeric`;
+      } else if (operator === 'greater_than') {
+        params.push(value);
+        cond = `${ageExpr} > $${params.length}::numeric`;
+      } else if (operator === 'less_than') {
+        params.push(value);
+        cond = `${ageExpr} < $${params.length}::numeric`;
+      } else if (operator === 'between' && value2 !== undefined && value2 !== null) {
+        params.push(value);
+        const p1 = params.length;
+        params.push(value2);
+        const p2 = params.length;
+        cond = `${ageExpr} BETWEEN $${p1}::numeric AND $${p2}::numeric`;
+      }
+      if (cond) {
+        conditions.push(`birthday IS NOT NULL AND (${cond})`);
+      }
+      continue;
+    }
+
+    // ── date fields (birthday, created_at) ────────────────────────────────────
+    if (DATE_FIELDS.includes(field)) {
+      if (value === undefined || value === null) continue;
+      if (operator === 'before') {
+        params.push(value);
+        conditions.push(`${field}::date < $${params.length}::date`);
+      } else if (operator === 'after') {
+        params.push(value);
+        conditions.push(`${field}::date > $${params.length}::date`);
+      } else if (operator === 'equals') {
+        params.push(value);
+        conditions.push(`${field}::date = $${params.length}::date`);
+      } else if (operator === 'within_last_days') {
+        params.push(value);
+        conditions.push(`${field}::date >= (NOW() - INTERVAL '1 day' * $${params.length}::int)`);
+      }
+      continue;
+    }
+
+    // ── status ────────────────────────────────────────────────────────────────
+    if (field === 'status') {
+      if (value === undefined || value === null) continue;
       if (operator === 'equals') {
         params.push(value);
         conditions.push(`status = $${params.length}`);
@@ -41,27 +218,33 @@ function buildSegmentQuery(rules, baseParams = []) {
         params.push(value);
         conditions.push(`status != $${params.length}`);
       }
-    } else if (field === 'email') {
-      if (operator === 'contains') {
-        params.push(`%${value}%`);
-        conditions.push(`email ILIKE $${params.length}`);
-      } else if (operator === 'equals') {
+      continue;
+    }
+
+    // ── tag (array) ───────────────────────────────────────────────────────────
+    if (field === 'tag') {
+      if (value === undefined || value === null) continue;
+      if (operator === 'contains' || operator === 'equals') {
         params.push(value);
-        conditions.push(`email = $${params.length}`);
+        conditions.push(`$${params.length} = ANY(tags)`);
+      } else if (operator === 'not_contains') {
+        params.push(value);
+        conditions.push(`NOT ($${params.length} = ANY(tags))`);
       }
-    } else if (field === 'created_at') {
-      if (operator === 'after') {
-        params.push(value);
-        conditions.push(`created_at > $${params.length}`);
-      } else if (operator === 'before') {
-        params.push(value);
-        conditions.push(`created_at < $${params.length}`);
-      }
-    } else if (field === 'source') {
+      continue;
+    }
+
+    // ── source ────────────────────────────────────────────────────────────────
+    if (field === 'source') {
+      if (value === undefined || value === null) continue;
       if (operator === 'equals') {
         params.push(value);
         conditions.push(`source = $${params.length}`);
+      } else if (operator === 'not_equals') {
+        params.push(value);
+        conditions.push(`source != $${params.length}`);
       }
+      continue;
     }
   }
 
@@ -259,6 +442,34 @@ export default async function segmentRoutes(fastify) {
           pages: Math.ceil(total / parseInt(limit)),
         },
       });
+    } catch (err) {
+      fastify.log.error(err);
+      return reply.code(500).send({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/segments/preview — evaluate rules without saving, return matching count
+  fastify.post('/api/segments/preview', { preHandler: authenticate }, async (request, reply) => {
+    const { rules } = request.body || {};
+    const accountId = request.user.accountId;
+
+    if (!Array.isArray(rules)) {
+      return reply.code(400).send({ error: 'rules must be an array' });
+    }
+
+    try {
+      const { conditions, params } = buildSegmentQuery(rules, [accountId]);
+      let whereClause = "account_id = $1 AND status = 'active'";
+      if (conditions.length > 0) {
+        whereClause += ' AND ' + conditions.join(' AND ');
+      }
+
+      const countResult = await query(
+        `SELECT COUNT(*) FROM contacts WHERE ${whereClause}`,
+        params
+      );
+
+      return reply.code(200).send({ count: parseInt(countResult.rows[0].count) });
     } catch (err) {
       fastify.log.error(err);
       return reply.code(500).send({ error: 'Internal server error' });

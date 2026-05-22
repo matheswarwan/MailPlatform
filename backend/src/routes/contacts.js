@@ -46,7 +46,7 @@ export default async function contactRoutes(fastify) {
       params.push(offset);
 
       const result = await query(
-        `SELECT id, email, first_name, last_name, company, phone, status, source,
+        `SELECT id, email, first_name, last_name, company, phone, sex, status, source,
                 tags, custom_fields, birthday, created_at, updated_at
          FROM contacts
          WHERE ${whereClause}
@@ -80,6 +80,7 @@ export default async function contactRoutes(fastify) {
       lastName,
       company,
       phone,
+      sex,
       status = 'active',
       source = 'manual',
       tags = [],
@@ -107,8 +108,8 @@ export default async function contactRoutes(fastify) {
       }
 
       const result = await query(
-        `INSERT INTO contacts (account_id, email, first_name, last_name, company, phone, status, source, tags, custom_fields, birthday)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        `INSERT INTO contacts (account_id, email, first_name, last_name, company, phone, sex, status, source, tags, custom_fields, birthday)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          RETURNING *`,
         [
           request.user.accountId,
@@ -117,6 +118,7 @@ export default async function contactRoutes(fastify) {
           lastName || null,
           company || null,
           phone || null,
+          sex || null,
           status,
           source,
           tags,
@@ -138,7 +140,7 @@ export default async function contactRoutes(fastify) {
 
     try {
       const result = await query(
-        `SELECT id, email, first_name, last_name, company, phone, status, source,
+        `SELECT id, email, first_name, last_name, company, phone, sex, status, source,
                 tags, custom_fields, birthday, created_at, updated_at
          FROM contacts
          WHERE id = $1 AND account_id = $2`,
@@ -183,6 +185,7 @@ export default async function contactRoutes(fastify) {
       lastName,
       company,
       phone,
+      sex,
       status,
       tags,
       customFields,
@@ -206,12 +209,13 @@ export default async function contactRoutes(fastify) {
              last_name = COALESCE($3, last_name),
              company = COALESCE($4, company),
              phone = COALESCE($5, phone),
-             status = COALESCE($6, status),
-             tags = COALESCE($7, tags),
-             custom_fields = COALESCE($8, custom_fields),
-             birthday = COALESCE($9, birthday),
+             sex = COALESCE($6, sex),
+             status = COALESCE($7, status),
+             tags = COALESCE($8, tags),
+             custom_fields = COALESCE($9, custom_fields),
+             birthday = COALESCE($10, birthday),
              updated_at = NOW()
-         WHERE id = $10 AND account_id = $11
+         WHERE id = $11 AND account_id = $12
          RETURNING *`,
         [
           email ? email.toLowerCase() : null,
@@ -219,6 +223,7 @@ export default async function contactRoutes(fastify) {
           lastName,
           company,
           phone,
+          sex,
           status,
           tags,
           customFields ? JSON.stringify(customFields) : null,
@@ -360,6 +365,7 @@ export default async function contactRoutes(fastify) {
         const lastName = row.last_name || row.lastName || row.LastName || row['Last Name'] || '';
         const company = row.company || row.Company || row.COMPANY || '';
         const phone = row.phone || row.Phone || row.PHONE || '';
+        const sex = row.sex || row.Sex || row.SEX || row.Gender || row.gender || null;
         const tagsRaw = row.tags || row.Tags || '';
         const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
 
@@ -378,13 +384,14 @@ export default async function contactRoutes(fastify) {
 
         try {
           const result = await query(
-            `INSERT INTO contacts (account_id, email, first_name, last_name, company, phone, tags, source)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, 'import')
+            `INSERT INTO contacts (account_id, email, first_name, last_name, company, phone, sex, tags, source)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'import')
              ON CONFLICT (account_id, email) DO UPDATE SET
                first_name = EXCLUDED.first_name,
                last_name = EXCLUDED.last_name,
                company = EXCLUDED.company,
                phone = EXCLUDED.phone,
+               sex = EXCLUDED.sex,
                tags = CASE
                  WHEN array_length(EXCLUDED.tags, 1) > 0
                  THEN array(SELECT DISTINCT unnest(contacts.tags || EXCLUDED.tags))
@@ -399,6 +406,7 @@ export default async function contactRoutes(fastify) {
               lastName || null,
               company || null,
               phone || null,
+              sex || null,
               tags,
             ]
           );

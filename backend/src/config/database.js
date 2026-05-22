@@ -22,8 +22,23 @@ export const query = (text, params) => pool.query(text, params);
 export { pool };
 
 export async function runMigrations() {
-  const migrationPath = join(__dirname, '../../migrations/001_initial_schema.sql');
-  const sql = await readFile(migrationPath, 'utf8');
-  await pool.query(sql);
-  console.log('Migrations complete');
+  const migration001 = join(__dirname, '../../migrations/001_initial_schema.sql');
+  const sql001 = await readFile(migration001, 'utf8');
+  await pool.query(sql001);
+  console.log('Migration 001_initial_schema.sql complete');
+
+  try {
+    const migration002 = join(__dirname, '../../migrations/002_contact_attributes.sql');
+    const sql002 = await readFile(migration002, 'utf8');
+    await pool.query(sql002);
+    console.log('Migration 002_contact_attributes.sql complete');
+  } catch (err) {
+    // IF NOT EXISTS guards are in place; only re-throw unexpected errors
+    if (err.code !== '42701' && err.code !== '42P07') {
+      throw err;
+    }
+    console.log('Migration 002_contact_attributes.sql skipped (already applied)');
+  }
+
+  console.log('All migrations complete');
 }
