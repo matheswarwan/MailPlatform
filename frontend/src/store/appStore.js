@@ -12,8 +12,8 @@ const useAppStore = create((set, get) => ({
     try {
       const res = await client.get('/contacts', { params });
       set({
-        contacts: res.data.contacts || res.data,
-        contactsMeta: res.data.meta || { total: 0, page: 1, pages: 1 },
+        contacts: res.data.contacts || [],
+        contactsMeta: res.data.pagination || { total: 0, page: 1, pages: 1 },
         contactsLoading: false,
       });
     } catch {
@@ -36,13 +36,14 @@ const useAppStore = create((set, get) => ({
 
   addContact: async (data) => {
     const res = await client.post('/contacts', data);
-    set((state) => ({ contacts: [res.data, ...state.contacts] }));
-    return res.data;
+    const contact = res.data.contact || res.data;
+    set((state) => ({ contacts: [contact, ...state.contacts] }));
+    return contact;
   },
 
   deleteContact: async (id) => {
     await client.delete(`/contacts/${id}`);
-    set((state) => ({ contacts: state.contacts.filter((c) => c._id !== id) }));
+    set((state) => ({ contacts: state.contacts.filter((c) => c.id !== id) }));
   },
 
   // ── Campaigns ─────────────────────────────────────────────────
@@ -53,7 +54,7 @@ const useAppStore = create((set, get) => ({
     set({ campaignsLoading: true });
     try {
       const res = await client.get('/campaigns');
-      set({ campaigns: res.data, campaignsLoading: false });
+      set({ campaigns: res.data.campaigns || [], campaignsLoading: false });
     } catch {
       set({ campaignsLoading: false });
     }
@@ -61,31 +62,34 @@ const useAppStore = create((set, get) => ({
 
   createCampaign: async (data) => {
     const res = await client.post('/campaigns', data);
-    set((state) => ({ campaigns: [res.data, ...state.campaigns] }));
-    return res.data;
+    const campaign = res.data.campaign || res.data;
+    set((state) => ({ campaigns: [campaign, ...state.campaigns] }));
+    return campaign;
   },
 
   updateCampaign: async (id, data) => {
     const res = await client.put(`/campaigns/${id}`, data);
+    const campaign = res.data.campaign || res.data;
     set((state) => ({
-      campaigns: state.campaigns.map((c) => (c._id === id ? res.data : c)),
+      campaigns: state.campaigns.map((c) => (c.id === id ? campaign : c)),
     }));
-    return res.data;
+    return campaign;
   },
 
   sendCampaign: async (id, scheduledAt = null) => {
     const payload = scheduledAt ? { scheduledAt } : {};
     const res = await client.post(`/campaigns/${id}/send`, payload);
+    const campaign = res.data.campaign || res.data;
     set((state) => ({
-      campaigns: state.campaigns.map((c) => (c._id === id ? res.data : c)),
+      campaigns: state.campaigns.map((c) => (c.id === id ? campaign : c)),
     }));
-    return res.data;
+    return campaign;
   },
 
   deleteCampaign: async (id) => {
     await client.delete(`/campaigns/${id}`);
     set((state) => ({
-      campaigns: state.campaigns.filter((c) => c._id !== id),
+      campaigns: state.campaigns.filter((c) => c.id !== id),
     }));
   },
 
@@ -97,7 +101,7 @@ const useAppStore = create((set, get) => ({
     set({ segmentsLoading: true });
     try {
       const res = await client.get('/segments');
-      set({ segments: res.data, segmentsLoading: false });
+      set({ segments: res.data.segments || res.data || [], segmentsLoading: false });
     } catch {
       set({ segmentsLoading: false });
     }
@@ -105,8 +109,9 @@ const useAppStore = create((set, get) => ({
 
   createSegment: async (data) => {
     const res = await client.post('/segments', data);
-    set((state) => ({ segments: [...state.segments, res.data] }));
-    return res.data;
+    const segment = res.data.segment || res.data;
+    set((state) => ({ segments: [...state.segments, segment] }));
+    return segment;
   },
 
   // ── Automations ───────────────────────────────────────────────
@@ -117,18 +122,19 @@ const useAppStore = create((set, get) => ({
     set({ automationsLoading: true });
     try {
       const res = await client.get('/automations');
-      set({ automations: res.data, automationsLoading: false });
+      set({ automations: res.data.automations || [], automationsLoading: false });
     } catch {
       set({ automationsLoading: false });
     }
   },
 
-  toggleAutomation: async (id, active) => {
-    const res = await client.patch(`/automations/${id}`, { active });
+  toggleAutomation: async (id) => {
+    const res = await client.patch(`/automations/${id}/toggle`);
+    const automation = res.data.automation || res.data;
     set((state) => ({
-      automations: state.automations.map((a) => (a._id === id ? res.data : a)),
+      automations: state.automations.map((a) => (a.id === id ? { ...a, ...automation } : a)),
     }));
-    return res.data;
+    return automation;
   },
 
   // ── Analytics ─────────────────────────────────────────────────
@@ -144,8 +150,8 @@ const useAppStore = create((set, get) => ({
         client.get('/analytics/campaigns'),
       ]);
       set({
-        analytics: overviewRes.data,
-        campaignAnalytics: campaignsRes.data,
+        analytics: overviewRes.data.overview || overviewRes.data,
+        campaignAnalytics: campaignsRes.data.campaigns || campaignsRes.data || [],
         analyticsLoading: false,
       });
     } catch {
@@ -160,17 +166,18 @@ const useAppStore = create((set, get) => ({
   fetchPreferenceConfig: async () => {
     set({ preferenceConfigLoading: true });
     try {
-      const res = await client.get('/preference-config');
-      set({ preferenceConfig: res.data, preferenceConfigLoading: false });
+      const res = await client.get('/preferences/config');
+      set({ preferenceConfig: res.data.config || res.data, preferenceConfigLoading: false });
     } catch {
       set({ preferenceConfigLoading: false });
     }
   },
 
   updatePreferenceConfig: async (data) => {
-    const res = await client.put('/preference-config', data);
-    set({ preferenceConfig: res.data });
-    return res.data;
+    const res = await client.put('/preferences/config', data);
+    const config = res.data.config || res.data;
+    set({ preferenceConfig: config });
+    return config;
   },
 }));
 
