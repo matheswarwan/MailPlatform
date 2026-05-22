@@ -65,7 +65,6 @@ Create a custom inline policy. On the permissions step, choose **Attach policies
         "ses:DeleteSuppressedDestination",
         "ses:GetSuppressedDestination",
         "ses:ListSuppressedDestinations",
-        "ses:PutConfigurationSet",
         "ses:CreateConfigurationSet",
         "ses:CreateConfigurationSetEventDestination"
       ],
@@ -92,13 +91,13 @@ Create a custom inline policy. On the permissions step, choose **Attach policies
         "s3:DeleteObject",
         "s3:PutObjectAcl"
       ],
-      "Resource": "arn:aws:s3:::mailflow-assets/*"
+      "Resource": "arn:aws:s3:::mailflow-assets-0173-6777-6352/*"
     },
     {
       "Sid": "S3ListBucket",
       "Effect": "Allow",
       "Action": ["s3:ListBucket", "s3:GetBucketLocation"],
-      "Resource": "arn:aws:s3:::mailflow-assets"
+      "Resource": "arn:aws:s3:::mailflow-assets-0173-6777-6352"
     }
   ]
 }
@@ -110,13 +109,14 @@ Name the policy `mailflow-app-policy`. Save, then attach it to the `mailflow-app
 
 1. Open the `mailflow-app` user → **Security credentials** tab
 2. Click **Create access key** → choose **Application running outside AWS**
-3. Download the CSV or copy both values now — the secret is shown only once
+3. AWS may show a recommendation: *"Alternative recommended: Use IAM Roles Anywhere…"* — ignore this and click **Confirm** to proceed with a standard access key
+4. Download the CSV or copy both values now — the secret is shown only once
 
 Set in your `.env`:
 ```
 AWS_ACCESS_KEY_ID=AKIA...
 AWS_SECRET_ACCESS_KEY=...
-AWS_REGION=us-east-1
+AWS_REGION=us-east-2
 ```
 
 ---
@@ -127,36 +127,38 @@ AWS_REGION=us-east-1
 
 1. Open [VPC Console](https://console.aws.amazon.com/vpc/) → **Security Groups** → **Create security group**
 2. Name: `mailflow-rds-sg`
-3. VPC: your default VPC
-4. **Inbound rules**: Add rule — Type: **PostgreSQL** (port 5432), Source: your app server IP or `0.0.0.0/0` (restrict this in production)
-5. Save
+3. Description: `Allow PostgreSQL access for MailFlow app`
+4. VPC: your default VPC
+5. **Inbound rules**: Add rule — Type: **PostgreSQL** (port 5432), Source: your app server IP or `0.0.0.0/0` (restrict this in production)
+6. Save
 
 ### 2.2 Create the RDS instance
 
 1. Open [RDS Console](https://console.aws.amazon.com/rds/) → **Create database**
-2. Engine: **PostgreSQL**, Version: **16.x** (latest stable)
-3. Template: **Free tier** (for development) or **Production** for live use
-4. Settings:
+2. Engine: **PostgreSQL** — do **not** choose "Aurora (PostgreSQL Compatible)"; Aurora costs ~$500+/month and is unnecessary for this project
+3. Version: **16.x** (latest stable)
+4. Template: **Free tier** (for development) or **Production** for live use
+5. Settings:
    - DB instance identifier: `mailflow-db`
    - Master username: `mailflow`
    - Master password: generate a strong password, save it securely
-5. DB instance class: `db.t3.micro` (dev) or `db.t3.small`+ (production)
-6. Storage: 20 GB gp2, enable **Auto scaling**
-7. Connectivity:
+6. DB instance class: `db.t3.micro` (dev) or `db.t3.small`+ (production)
+7. Storage: 20 GB gp2 — do **not** enable Provisioned IOPS (adds significant cost)
+8. Connectivity:
    - VPC: default
    - Public access: **Yes** (only if connecting from outside AWS; use No + bastion in production)
    - Security group: `mailflow-rds-sg`
-8. Additional configuration:
+9. Additional configuration:
    - Initial database name: `mailflow`
-9. Click **Create database** (takes 3–5 minutes)
+10. Click **Create database** (takes 3–5 minutes)
 
 ### 2.3 Get the connection string
 
-Once the instance is **Available**, click on it and copy the **Endpoint** (looks like `mailflow-db.xxxx.us-east-1.rds.amazonaws.com`).
+Once the instance is **Available**, click on it and copy the **Endpoint** (looks like `mailflow-db.xxxx.us-east-2.rds.amazonaws.com`).
 
 Set in your `.env`:
 ```
-DATABASE_URL=postgresql://mailflow:YOUR_PASSWORD@mailflow-db.xxxx.us-east-1.rds.amazonaws.com:5432/mailflow
+DATABASE_URL=postgresql://mailflow:YOUR_PASSWORD@mailflow-db.xxxx.us-east-2.rds.amazonaws.com:5432/mailflow
 ```
 
 ### 2.4 Run migrations
@@ -177,8 +179,8 @@ Used for storing uploaded logos from the Preference Centre configuration.
 ### 3.1 Create the bucket
 
 1. Open [S3 Console](https://console.aws.amazon.com/s3/) → **Create bucket**
-2. Bucket name: `mailflow-assets` (must be globally unique — append your account ID if taken, e.g. `mailflow-assets-123456`)
-3. Region: `us-east-1` (same as everything else)
+2. Bucket name: `mailflow-assets-0173-6777-6352` (must be globally unique — append your account ID if taken, e.g. `mailflow-assets-0173-6777-6352-123456`)
+3. Region: `us-east-2` (same as everything else)
 4. **Object Ownership**: ACLs enabled → Bucket owner preferred
 5. **Block Public Access**: uncheck "Block all public access" for logo images to be publicly readable
 6. Acknowledge the warning → **Create bucket**
@@ -196,13 +198,13 @@ Open the bucket → **Permissions** → **Bucket policy** → paste:
       "Effect": "Allow",
       "Principal": "*",
       "Action": "s3:GetObject",
-      "Resource": "arn:aws:s3:::mailflow-assets/logos/*"
+      "Resource": "arn:aws:s3:::mailflow-assets-0173-6777-6352/logos/*"
     }
   ]
 }
 ```
 
-Replace `mailflow-assets` with your actual bucket name.
+Replace `mailflow-assets-0173-6777-6352` with your actual bucket name.
 
 ### 3.3 Configure CORS (for browser uploads)
 
@@ -221,7 +223,7 @@ Open the bucket → **Permissions** → **Cross-origin resource sharing (CORS)**
 
 Set in your `.env`:
 ```
-S3_BUCKET=mailflow-assets
+S3_BUCKET=mailflow-assets-0173-6777-6352
 ```
 
 ---
@@ -280,11 +282,11 @@ SNS receives events from SES and delivers them to your backend webhook endpoint.
 2. Type: **Standard**
 3. Name: `mailflow-ses-events`
 4. Click **Create topic**
-5. Copy the **Topic ARN** (looks like `arn:aws:sns:us-east-1:123456789012:mailflow-ses-events`)
+5. Copy the **Topic ARN** (looks like `arn:aws:sns:us-east-2:123456789012:mailflow-ses-events`)
 
 Set in your `.env`:
 ```
-SNS_TOPIC_ARN=arn:aws:sns:us-east-1:123456789012:mailflow-ses-events
+SNS_TOPIC_ARN=arn:aws:sns:us-east-2:123456789012:mailflow-ses-events
 ```
 
 ### 5.2 Subscribe your webhook endpoint
@@ -294,10 +296,12 @@ Your backend exposes `POST /api/webhooks/ses` to receive SNS notifications.
 1. Inside the topic → **Create subscription**
 2. Protocol: **HTTPS**
 3. Endpoint: `https://yourapp.com/api/webhooks/ses`
-   - For local development, use a tunnel tool like [ngrok](https://ngrok.com/): `ngrok http 3001`, then use the `https://....ngrok.io/api/webhooks/ses` URL
-4. Click **Create subscription** — SNS sends a `SubscribeURL` confirmation request
-5. Start your backend server — it automatically confirms the subscription when it receives the `SubscriptionConfirmation` request (handled in `webhooks.js`)
-6. The subscription status changes to **Confirmed**
+   - For local development, use ngrok: `ngrok http 3001`, then use `https://<your-ngrok-id>.ngrok-free.app/api/webhooks/ses`
+4. Click **Create subscription** — status will show **Pending confirmation**
+5. **Before this step**: make sure `pino-pretty` is installed (`npm install pino-pretty --save-dev`) and start the backend (`npm run dev`)
+   - If you previously ran any npm command with `sudo` and get a permission error, fix it first: `sudo chown -R $(whoami) ~/.npm`
+6. Once the backend is running, SNS automatically retries the confirmation — the backend logs `SNS subscription confirmation received` and responds 200
+7. The subscription status changes to **Confirmed**
 
 ### 5.3 Wire SNS to SES
 
@@ -332,7 +336,7 @@ PORT=3001
 NODE_ENV=production
 
 # Database
-DATABASE_URL=postgresql://mailflow:PASSWORD@mailflow-db.xxxx.us-east-1.rds.amazonaws.com:5432/mailflow
+DATABASE_URL=postgresql://mailflow:PASSWORD@mailflow-db.xxxx.us-east-2.rds.amazonaws.com:5432/mailflow
 
 # Auth
 JWT_SECRET=generate-with-openssl-rand-base64-48
@@ -340,17 +344,17 @@ JWT_SECRET=generate-with-openssl-rand-base64-48
 # AWS (all services)
 AWS_ACCESS_KEY_ID=AKIA...
 AWS_SECRET_ACCESS_KEY=...
-AWS_REGION=us-east-1
+AWS_REGION=us-east-2
 
 # S3
-S3_BUCKET=mailflow-assets
+S3_BUCKET=mailflow-assets-0173-6777-6352
 
 # SES
 SES_CONFIGURATION_SET=mailflow-events
 SES_SEND_RATE=14
 
 # SNS
-SNS_TOPIC_ARN=arn:aws:sns:us-east-1:123456789012:mailflow-ses-events
+SNS_TOPIC_ARN=arn:aws:sns:us-east-2:123456789012:mailflow-ses-events
 
 # URLs
 APP_URL=https://yourapp.com
@@ -472,17 +476,17 @@ Push to ECR:
 
 ```bash
 # Authenticate Docker to ECR
-aws ecr get-login-password --region us-east-1 | \
+aws ecr get-login-password --region us-east-2 | \
   docker login --username AWS --password-stdin \
-  123456789012.dkr.ecr.us-east-1.amazonaws.com
+  123456789012.dkr.ecr.us-east-2.amazonaws.com
 
 # Create repository (once)
-aws ecr create-repository --repository-name mailflow-backend --region us-east-1
+aws ecr create-repository --repository-name mailflow-backend --region us-east-2
 
 # Build and push
 docker build -t mailflow-backend ./backend
-docker tag mailflow-backend:latest 123456789012.dkr.ecr.us-east-1.amazonaws.com/mailflow-backend:latest
-docker push 123456789012.dkr.ecr.us-east-1.amazonaws.com/mailflow-backend:latest
+docker tag mailflow-backend:latest 123456789012.dkr.ecr.us-east-2.amazonaws.com/mailflow-backend:latest
+docker push 123456789012.dkr.ecr.us-east-2.amazonaws.com/mailflow-backend:latest
 ```
 
 ### 9.2 Create an ECS cluster
@@ -511,7 +515,7 @@ Instead of hardcoding env vars in the task definition:
 aws secretsmanager create-secret \
   --name mailflow/env \
   --secret-string file://backend/.env \
-  --region us-east-1
+  --region us-east-2
 ```
 
 Reference the secret in your task definition — Fargate injects the values as environment variables at container start.
